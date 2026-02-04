@@ -8,7 +8,7 @@ simulation:
 
   # --- 網格解析度 ---
   nx: 1600
-  ny: 400
+  ny: 800
 
   # --- 物理與穩定性參數 ---
   # niu: 黏滯係數 (建議 0.0005 ~ 0.02)。越小 Re 越高，但易不穩定。
@@ -18,7 +18,7 @@ simulation:
   smagorinsky_constant: 0.15
 
   # MRT 碰撞模型鬆弛參數 (1.0~1.95, 1.8 為穩定推薦值)
-  ghost_moments_s: 1.8
+  ghost_moments_s: 1.4
 
   # --- 視覺化與輸出 ---
   steps_per_frame: 100 # 每幾步計算更新一次畫面
@@ -58,3 +58,6 @@ mask:
 
 foler_paths:
   output: "src/lbm_mrt_les/output/"
+
+display:
+  max_size: 1024

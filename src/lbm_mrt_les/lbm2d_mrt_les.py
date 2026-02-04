@@ -7,6 +7,7 @@ import taichi.math as tm
 from VideoRecorder import VideoRecorder
 from scipy.ndimage import gaussian_filter
 
+
 import sys
 import os
 
@@ -123,6 +124,11 @@ class LBM2D_MRT_LES:
 
         # --- MRT 轉換矩陣 (核心優化) ---
         # 這裡將 M 定義為 Taichi Matrix 而非 Field，
+        # 定義 9x9 的場來儲存矩陣
+        self.M_field = ti.field(dtype=ti.f32, shape=(9, 9))
+        self.invM_field = ti.field(dtype=ti.f32, shape=(9, 9))
+
+        # 定義 numpy 數據
         M_np = np.array(
             [
                 [1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -138,8 +144,11 @@ class LBM2D_MRT_LES:
             dtype=np.float32,
         )
 
-        self.M = ti.Matrix(M_np)
-        self.invM = ti.Matrix(np.linalg.inv(M_np))
+        invM_np = np.linalg.inv(M_np).astype(np.float32)
+
+        # 將數據寫入 Field (這一步會在 Python 端執行一次)
+        self.M_field.from_numpy(M_np)
+        self.invM_field.from_numpy(invM_np)
 
         # MRT 鬆弛對角矩陣 (S vector)
         # 用於碰撞步驟: m* = m - S * (m - m_eq)
@@ -199,42 +208,71 @@ class LBM2D_MRT_LES:
     @ti.kernel
     def collide_and_stream(self):
         for i, j in ti.ndrange((1, self.nx - 1), (1, self.ny - 1)):
-            # --- Stream ---
-            f_temp = ti.Vector([0.0] * 9, dt=ti.f32)
+            f_temp = ti.types.vector(9, float)(0.0)
             for k in ti.static(range(9)):
-                ip = (i - self.e[k, 0] + self.nx) % self.nx
-                jp = (j - self.e[k, 1] + self.ny) % self.ny
+                ip, jp = i - self.e[k, 0], j - self.e[k, 1]
                 f_temp[k] = self.f_old[ip, jp][k]
 
-            # --- Collision (MRT) ---
-            # 直接使用 ti.Matrix @ ti.Vector
-            m = self.M @ f_temp
+            m = ti.types.vector(9, float)(0.0)
+            for r in ti.static(range(9)):
+                val = 0.0
+                for c in ti.static(range(9)):
+                    val += self.M_field[r, c] * f_temp[c]
+                m[r] = val
+
             rho_l = m[0]
-            u_l = m[3] / rho_l
-            v_l = m[5] / rho_l
+            u_l, v_l = 0.0, 0.0
+            if rho_l > 0:
+                u_l, v_l = m[3] / rho_l, m[5] / rho_l
 
             m_eq = self.get_meq(rho_l, u_l, v_l)
-
-            # LES 渦黏計算 (計算應變率張量相關項)
-            # Sij 相關於非平衡動態矩 m[7], m[8]
             neq_7 = m[7] - m_eq[7]
             neq_8 = m[8] - m_eq[8]
-            S_mag = tm.sqrt(neq_7**2 + neq_8**2)
+            momentum_neq_mag = tm.sqrt(neq_7 * neq_7 + neq_8 * neq_8)
 
+            # 1. 基礎 LES 計算 (保持原樣)
             tau_eff = self.tau_0
-            if ti.static(self.C_smag > 0):
-                # Smagorinsky 模型修正
-                tau_eddy = 0.5 * (
-                    tm.sqrt(self.tau_0**2 + 2 * self.Cs_sq_factor * S_mag) - self.tau_0
+            if self.C_smag > 0.001:
+                term_inside = (
+                    self.tau_0**2 + (self.Cs_sq_factor * momentum_neq_mag) / rho_l
                 )
-                tau_eff += tau_eddy
+                tau_eddy = 0.5 * (tm.sqrt(term_inside) - self.tau_0)
+                tau_eff = self.tau_0 + tau_eddy
+
+            # ==========================================
+            # [新增] 2. Sponge Layer (阻尼層)
+            # ==========================================
+            sponge_width = 200  # 阻尼層寬度 (Lattice Units)
+            sponge_strength = 1.0  # 增加的額外 Tau 值 (越大越黏)
+
+            # 判斷是否在右側邊界區域
+            dist_from_inlet = i
+            x_start_sponge = self.nx - sponge_width
+
+            if dist_from_inlet > x_start_sponge:
+                # 歸一化座標 (0.0 ~ 1.0)
+                coord = (dist_from_inlet - x_start_sponge) / sponge_width
+                # 使用二次曲線平滑增加黏滯性
+                tau_eff += sponge_strength * (coord * coord)
+            # ==========================================
 
             s_eff = 1.0 / tau_eff
             S_local = self.S_base
-            S_local[7] = S_local[8] = s_eff  # 鬆弛剪切應力項
+
+            # MRT 的 S7, S8 控制剪切黏滯性，必須使用 s_eff
+            S_local[7] = s_eff
+            S_local[8] = s_eff
 
             m_star = m - S_local * (m - m_eq)
-            self.f_new[i, j] = self.invM @ m_star
+
+            f_new_val = ti.types.vector(9, float)(0.0)
+            for r in ti.static(range(9)):
+                val = 0.0
+                for c in ti.static(range(9)):
+                    val += self.invM_field[r, c] * m_star[c]
+                f_new_val[r] = val
+
+            self.f_new[i, j] = f_new_val
 
     @ti.kernel
     def update_macro_var(self):
@@ -321,129 +359,3 @@ class LBM2D_MRT_LES:
 
     # endregion
     # ------------------------------------------------
-
-    # ------------------------------------------------
-    # region Visualization Helpers (新增的渲染輔助區塊)
-
-    def _init_render_resources(self):
-        """初始化繪圖資源 (Colormap)"""
-        colors = [
-            (1, 1, 0),
-            (0.953, 0.490, 0.016),
-            (0, 0, 0),
-            (0.176, 0.976, 0.529),
-            (0, 1, 1),
-        ]
-        self.my_cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
-            "my_cmap", colors
-        )
-        self.my_cmap.set_bad(color="grey")
-
-        # 預先定義 Normalizer，避免每幀重新建立
-        self.vor_norm = matplotlib.colors.Normalize(vmin=-0.03, vmax=0.03)
-
-    def _render_frame(self, vel_raw, mask_np):
-        """
-        [渲染核心] 輸入原始速度與遮罩，輸出組合好的 RGB 圖像
-        """
-        # 1. 數據後處理 (Post-processing)
-        vel_x = gaussian_filter(vel_raw[:, :, 0], sigma=self.viz_sigma)
-        vel_y = gaussian_filter(vel_raw[:, :, 1], sigma=self.viz_sigma)
-
-        # 計算渦度 (Vorticity)
-        ugrad = np.gradient(vel_x)
-        vgrad = np.gradient(vel_y)
-        vor = ugrad[1] - vgrad[0]
-        vel_mag = np.sqrt(vel_x**2 + vel_y**2)
-
-        # 處理遮罩 (Masking)
-        vor[mask_np > 0] = np.nan
-
-        # 2. 轉換為影像 (Scalar Mapping)
-        # Vorticity Image
-        vor_mapper = cm.ScalarMappable(norm=self.vor_norm, cmap=self.my_cmap)
-        vor_img = vor_mapper.to_rgba(vor)[:, :, :3]
-
-        # Velocity Image (Plasma colormap)
-        vel_img = cm.plasma(vel_mag / 0.15)[:, :, :3]
-
-        # 3. 疊加障礙物顏色 (灰色)
-        # 利用廣播機制加速，取代原本的 for loop
-        mask_indices = mask_np == 1
-        gray_color = 0.5
-        vor_img[mask_indices] = gray_color
-        vel_img[mask_indices] = gray_color
-
-        # 4. 拼接影像 (左右拼接)
-        # 輸出 Shape: (nx, ny*2, 3)
-        return np.concatenate((vel_img, vor_img), axis=1)
-
-    # endregion
-
-    # ------------------------------------------------
-    # region main solver (重構後的 solve)
-    def solve(self):
-        """
-        主執行函式：負責初始化視窗、錄影與主迴圈控制
-        """
-        # 1. 初始化模擬與資源
-        self.init()
-        self._init_render_resources()
-        self.Re = self.check_re()
-
-        # 2. 初始化 GUI
-        # 畫面高度為 ny * 2 (因為是速度圖+渦度圖拼接)
-        gui = ti.GUI(self.name, (self.nx, self.ny * 2))
-
-        # 3. 初始化錄影 (路徑容錯處理)
-        try:
-            # 嘗試適配不同的 config 結構
-            if "foler_paths" in self.config and "output" in self.config["foler_paths"]:
-                out_dir = self.config["foler_paths"]["output"]
-            else:
-                out_dir = self.config.get("output", {}).get("video_dir", "./output")
-
-            # 確保目錄存在
-            os.makedirs(out_dir, exist_ok=True)
-            video_path = os.path.join(out_dir, f"Re{int(self.Re)}_nx{self.nx}.mp4")
-
-            recorder = VideoRecorder(video_path, self.nx, self.ny * 2, fps=30)
-            recorder.start()
-        except Exception as e:
-            print(f"[Warning] VideoRecorder init failed: {e}")
-            recorder = None
-
-        print(f"--- Simulation Started: Re={self.Re:.2f} ---")
-
-        try:
-            while gui.running:
-                # --- A. 物理計算 ---
-                # 呼叫既有的 run_step (包含 collide, stream, bc, macro_update)
-                self.run_step(self.steps_per_frame)
-
-                # --- B. 獲取數據 ---
-                vel_raw, mask_np = self.get_physical_fields()
-
-                # --- C. 渲染處理 (封裝在 _render_frame) ---
-                img_gui = self._render_frame(vel_raw, mask_np)
-
-                # --- D. 顯示與錄影 ---
-                gui.set_image(img_gui)
-                gui.show()
-
-                if recorder:
-                    # GUI (W, H) -> Video (H, W) 轉置處理
-                    img_video = np.transpose(img_gui, (1, 0, 2))
-                    recorder.write_frame(img_video)
-
-        except Exception as e:
-            print(f"Simulation crashed: {e}")
-            import traceback
-
-            traceback.print_exc()
-        finally:
-            if recorder:
-                recorder.stop()
-            print("Simulation finished.")
-
-    # endregion
