@@ -1,7 +1,7 @@
 simulation:
   name: "Re4000_Room_Stable"
   nx: 1600
-  ny: 800
+  ny: 1000
 
   # --- 物理核心 ---
   # 定義: Re=4000 (基於建築寬度 L=100)
@@ -15,7 +15,7 @@ simulation:
   # 因為有尖角，開啟 LES
   smagorinsky_constant: 0.2
   # MRT 參數
-  ghost_moments_s: 1.1
+  ghost_moments_s: 1.05
 
   # --- 視覺化 ---
   steps_per_frame: 50
@@ -42,11 +42,18 @@ mask:
     w: 12
     d_half: 16 # 開口 16
     margin_lr: 700
-    margin_td: 300 # 這裡隱含了建築寬度約為 (800 - 350*2) = 100
+    margin_td: 400 # 這裡隱含了建築寬度約為 (800 - 350*2) = 100
 
 foler_paths:
   output: "output/re4000_stable/"
 
 display:
   max_size: 960
-  gui_show: True
+  gui_show: False
+  show_zone_overlay: True
+
+  zone:
+    sponge_y: 40
+    sponge_x: 200
+    buffer: 150
+    inlet_buffer: 100

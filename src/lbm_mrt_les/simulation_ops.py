@@ -68,6 +68,9 @@ def run_simulation_loop(config, solver, viz, recorder, gui, max_steps):
     [New] 模擬主迴圈：負責執行運算、更新畫面、收集數據
     移入 ops 以便被不同的 main script 重用
     """
+    # 1. 取得區域設定
+    zones = utils.get_zone_config(config)
+
     # 容器初始化
     history = {"steps": [], "fx": [], "fy": []}
     current_steps = 0
@@ -117,7 +120,21 @@ def run_simulation_loop(config, solver, viz, recorder, gui, max_steps):
 
             if gui:
                 gui.set_image(img)
+                show_zone_overlay = config["display"].get("show_zone_overlay", True)
+                if show_zone_overlay:
+                    utils.draw_zone_overlay(
+                        gui,
+                        zones,
+                        y_offset=0.0,  # <--- 如果框框跑到底下的圖，請改成 0.5
+                    )
+                    utils.draw_zone_overlay(
+                        gui,
+                        zones,
+                        y_offset=0.5,  # <--- 如果框框跑到底下的圖，請改成 0.5
+                    )
+
                 gui.show()
+
             if recorder:
                 recorder.write_frame(np.transpose(img, (1, 0, 2)))
 

@@ -238,11 +238,13 @@ class LBM2D_MRT_LES:
     @ti.kernel
     def collide_and_stream(self):
         for i, j in ti.ndrange((1, self.nx - 1), (1, self.ny - 1)):
+            # --- 1. Streaming (流動步驟) ---
             f_temp = ti.types.vector(9, float)(0.0)
             for k in ti.static(range(9)):
                 ip, jp = i - self.e[k, 0], j - self.e[k, 1]
                 f_temp[k] = self.f_old[ip, jp][k]
 
+            # --- 2. MRT Moment Transformation (矩陣轉換) ---
             m = ti.types.vector(9, float)(0.0)
             for r in ti.static(range(9)):
                 val = 0.0
@@ -250,6 +252,7 @@ class LBM2D_MRT_LES:
                     val += self.M_field[r, c] * f_temp[c]
                 m[r] = val
 
+            # --- 3. Macroscopic Variables (計算密度與速度) ---
             rho_l = m[0]
             u_l, v_l = 0.0, 0.0
             if rho_l > 0:
@@ -260,7 +263,7 @@ class LBM2D_MRT_LES:
             neq_8 = m[8] - m_eq[8]
             momentum_neq_mag = tm.sqrt(neq_7 * neq_7 + neq_8 * neq_8)
 
-            # 1. 基礎 LES 計算 (保持原樣)
+            # --- 4. LES (大渦模擬) 基礎計算 ---
             tau_eff = self.tau_0
             if self.C_smag > 0.001:
                 term_inside = (
@@ -270,22 +273,38 @@ class LBM2D_MRT_LES:
                 tau_eff = self.tau_0 + tau_eddy
 
             # ==========================================
-            # [新增] 2. Sponge Layer (阻尼層)
+            # [修改] 5. Omni-directional Sponge Layer (全方位阻尼層)
             # ==========================================
-            sponge_width = 200  # 阻尼層寬度 (Lattice Units)
-            sponge_strength = 1.0  # 增加的額外 Tau 值 (越大越黏)
+            # 參數設定 (可在此微調)
+            sponge_width_x = 200  # 出口阻尼層長度 (保持較長)
+            sponge_width_y = 40  # 上下阻尼層厚度 (建議 30~50 格)
+            sponge_strength = 2.0  # 阻尼強度 (越大越黏，吸收越快)
 
-            # 判斷是否在右側邊界區域
-            dist_from_inlet = i
-            x_start_sponge = self.nx - sponge_width
-
-            if dist_from_inlet > x_start_sponge:
+            # A. 計算 X 方向阻尼 (Outlet)
+            damping_x = 0.0
+            x_start_sponge = self.nx - sponge_width_x
+            if i > x_start_sponge:
                 # 歸一化座標 (0.0 ~ 1.0)
-                coord = (dist_from_inlet - x_start_sponge) / sponge_width
-                # 使用二次曲線平滑增加黏滯性
-                tau_eff += sponge_strength * (coord * coord)
+                coord = (i - x_start_sponge) / sponge_width_x
+                damping_x = sponge_strength * (coord * coord)
+
+            # B. 計算 Y 方向阻尼 (Top & Bottom)
+            damping_y = 0.0
+            # 下邊界區域
+            if j < sponge_width_y:
+                coord = (sponge_width_y - j) / sponge_width_y
+                damping_y = sponge_strength * (coord * coord)
+            # 上邊界區域
+            elif j > (self.ny - sponge_width_y):
+                coord = (j - (self.ny - sponge_width_y)) / sponge_width_y
+                damping_y = sponge_strength * (coord * coord)
+
+            # C. 疊加阻尼 (取最大值)
+            # 使用 max 而不是直接相加，可以避免在角落處(右上/右下)黏滯性過大導致反射
+            tau_eff += tm.max(damping_x, damping_y)
             # ==========================================
 
+            # --- 6. MRT Relaxation (鬆弛運算) ---
             s_eff = 1.0 / tau_eff
             S_local = self.S_base
 
@@ -295,6 +314,7 @@ class LBM2D_MRT_LES:
 
             m_star = m - S_local * (m - m_eq)
 
+            # --- 7. Inverse MRT (轉回分布函數) ---
             f_new_val = ti.types.vector(9, float)(0.0)
             for r in ti.static(range(9)):
                 val = 0.0

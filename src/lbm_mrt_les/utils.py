@@ -411,3 +411,115 @@ def apply_resize(img, target_w, target_h):
         return img
 
     return cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+
+
+# ==========================================
+# 區域定義 (Region of Interest & Sponge)
+# ==========================================
+def get_zone_config(config):
+    """
+    定義阻尼層與安全區的物理座標
+    """
+    nx = config["simulation"]["nx"]
+    ny = config["simulation"]["ny"]
+    zone_config = config["display"].get("zone", {})
+
+    # 阻尼層配置
+    sponge_y = zone_config.get("sponge_y", 40)  # 上下阻尼厚度
+    sponge_x = zone_config.get("sponge_x", 200)  # 左右阻尼厚度
+
+    # 安全區 (ROI) 配置：切除阻尼層 + 額外緩衝
+    buffer = zone_config.get("buffer", 50)
+    inlet_buffer = zone_config.get("inlet_buffer", 100)
+
+    roi_x_start = inlet_buffer
+    roi_x_end = nx - sponge_x - buffer
+    roi_y_start = sponge_y + buffer
+    roi_y_end = ny - sponge_y - buffer
+
+    return {
+        "sponge_y": sponge_y,
+        "sponge_x": sponge_x,
+        "roi_x_start": roi_x_start,
+        "roi_x_end": roi_x_end,
+        "roi_y_start": roi_y_start,
+        "roi_y_end": roi_y_end,
+        "nx": nx,
+        "ny": ny,
+    }
+
+
+# ==========================================
+# 2. GUI 繪圖工具 (處理視窗比例轉換)
+# ==========================================
+def draw_zone_overlay(gui, zones, split_ratio=0.5, y_offset=0.0):
+    """
+    在 Taichi GUI 上繪製區域框線，支援上下拼接的畫面
+
+    Args:
+        gui: Taichi GUI 物件
+        zones: get_zone_config 回傳的字典
+        split_ratio: 如果畫面高度是原本的 2 倍，這裡填 0.5 (表示物理場只佔視窗的一半)
+        y_offset: 如果物理場在視窗的上半部，填 0.5；如果在下半部，填 0.0
+    """
+    nx, ny = zones["nx"], zones["ny"]
+
+    # --- 座標轉換 Helper ---
+    # 將物理座標 (x, y) 轉換為 GUI 歸一化座標 (0.0 ~ 1.0)
+    def to_gui(x, y):
+        u = x / nx
+        # y 軸先歸一化到 (0~1)，然後縮放到視窗佔比 (split_ratio)，再加上偏移 (offset)
+        v = (y / ny) * split_ratio + y_offset
+        return [u, v]
+
+    # --- 1. 繪製阻尼層 (Sponge Layer) - 綠色 ---
+    sp_x = zones["sponge_x"]
+    sp_y = zones["sponge_y"]
+    color_sponge = 0x00FF00
+
+    # 右側阻尼分界線 (垂直)
+    # 從 (nx-sp_x, 0) 到 (nx-sp_x, ny)
+    gui.line(
+        begin=to_gui(nx - sp_x, 0),
+        end=to_gui(nx - sp_x, ny),
+        color=color_sponge,
+        radius=2,
+    )
+
+    # 下阻尼分界線 (水平)
+    gui.line(begin=to_gui(0, sp_y), end=to_gui(nx, sp_y), color=color_sponge, radius=2)
+
+    # 上阻尼分界線 (水平)
+    gui.line(
+        begin=to_gui(0, ny - sp_y),
+        end=to_gui(nx, ny - sp_y),
+        color=color_sponge,
+        radius=2,
+    )
+
+    # --- 2. 繪製安全區 (ROI) - 紅色 ---
+    color_roi = 0xFF0000
+
+    # 左下角與右上角
+    p1 = to_gui(zones["roi_x_start"], zones["roi_y_start"])
+    p2 = to_gui(zones["roi_x_end"], zones["roi_y_end"])
+
+    # Taichi 的 rect 需要 top-left 和 bottom-right (但在某些版本是 p1, p2 對角)
+    # 為了安全起見，我們用 lines 畫矩形，確保在各種 Taichi 版本都正確，且可以控制線條順序
+    x0, y0 = p1
+    x1, y1 = p2
+
+    # 畫四個邊
+    gui.line([x0, y0], [x1, y0], color=color_roi, radius=3)  # 下
+    gui.line([x1, y0], [x1, y1], color=color_roi, radius=3)  # 右
+    gui.line([x1, y1], [x0, y1], color=color_roi, radius=3)  # 上
+    gui.line([x0, y1], [x0, y0], color=color_roi, radius=3)  # 左
+
+    # --- 3. 加入文字標籤 ---
+    gui.text("Dataset ROI", pos=[x0, y1 + 0.02], color=color_roi, font_size=20)
+    gui.text(
+        "Sponge",
+        pos=[to_gui(nx - sp_x + 10, ny / 2)[0], to_gui(nx - sp_x + 10, ny / 2)[1]],
+        color=color_sponge,
+        font_size=20,
+    )
