@@ -23,7 +23,7 @@ simulation:
   warmup_steps: 5000 # 高 Re 需要更長時間發展出穩定的湍流統計特性
 
 boundary_condition:
-  type: [0, 0, 1, 0]
+  type: [0, 2, 1, 2] # 左(In), 上(Free-slip), 右(Out), 下(Free-slip)
   value:
     - [0.05, 0.0] # 堅持使用 0.05，這是 LBM 的甜蜜點
     - [0.0, 0.0]

@@ -311,11 +311,35 @@ class LBM2D_MRT_LES:
     @ti.func
     def apply_bc_core(self, outer, dr, ibc, jbc, inb, jnb, ramp: float):
         if outer == 1:
-            if self.bc_type[dr] == 0:
+            if self.bc_type[dr] == 0:  # Dirichlet (Fixed Velocity, e.g., Inlet)
                 self.vel[ibc, jbc] = self.bc_value[dr] * ramp
-            elif self.bc_type[dr] == 1:
+
+            elif self.bc_type[dr] == 1:  # Neumann (Outlet / Zero Gradient)
                 self.vel[ibc, jbc] = self.vel[inb, jnb]
+
+            elif self.bc_type[dr] == 2:  # Free-Slip (Symmetry / Specular)
+                # 邏輯：切向速度照抄鄰居 (Free)，法向速度設為 0 (Wall)
+
+                # 判斷牆壁方向：
+                # 如果 Ghost Node 和 Neighbor Node 的 X 座標相同 (ibc == inb)，代表是上下牆壁
+                if ibc == inb:
+                    self.vel[ibc, jbc][0] = self.vel[inb, jnb][
+                        0
+                    ]  # u_x (切向): 保留流體速度
+                    self.vel[ibc, jbc][1] = 0.0  # u_y (法向): 撞牆歸零
+
+                # 否則就是左右牆壁 (jbc == jnb)
+                else:
+                    self.vel[ibc, jbc][0] = 0.0  # u_x (法向): 撞牆歸零
+                    self.vel[ibc, jbc][1] = self.vel[inb, jnb][
+                        1
+                    ]  # u_y (切向): 保留流體速度
+
+        # --- 共同處理 (Extrapolation Scheme) ---
+        # 密度設為與內部相同 (壓力梯度為 0)
         self.rho[ibc, jbc] = self.rho[inb, jnb]
+
+        # 利用修正後的 Ghost Velocity 計算平衡態，並疊加非平衡部分
         self.f_old[ibc, jbc] = (
             self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
         )

@@ -78,36 +78,40 @@ def calculate_temporal_average_from_video(
 
 
 # ==========================================
-# 自動化批次處理：遞迴搜尋所有子目錄
+# 自動化批次處理：加入檢查機制
 # ==========================================
 if __name__ == "__main__":
-    # 你的 LBM 模擬根目錄
     root_dir = "src/lbm_mrt_les/output"
-
     print(f"--- Starting Batch Post-Processing in: {root_dir} ---")
 
-    # dirpath: 目前正在遍歷的目錄路徑
-    # dirnames: 該目錄下的子目錄清單
-    # filenames: 該目錄下的檔案清單
     for dirpath, dirnames, filenames in os.walk(root_dir):
-        # 過濾出所有 mp4 檔案
         video_files = [f for f in filenames if f.endswith(".mp4")]
 
         for video_file in video_files:
-            # 構建完整輸入路徑
             input_path = os.path.join(dirpath, video_file)
-
-            # 構建輸出路徑 (與影片同目錄，同檔名開頭)
             base_name = os.path.splitext(video_file)[0]
+
             output_avg = os.path.join(dirpath, f"{base_name}_AVG.png")
             output_last = os.path.join(dirpath, f"{base_name}_LAST.png")
 
-            print(f"\n[Processing] Found: {input_path}")
+            print(f"\n[Target]: {input_path}")
 
-            # 1. 執行時間平均 (像素層次)
-            calculate_temporal_average_from_video(input_path, output_avg)
+            # --- 策略性跳過判斷 ---
 
-            # 2. 執行最後一幀提取
-            save_last_frame_from_video(input_path, output_last)
+            # 處理 Average Image
+            if os.path.exists(output_avg):
+                print(
+                    f"  >> Skipping Average: {os.path.basename(output_avg)} already exists."
+                )
+            else:
+                calculate_temporal_average_from_video(input_path, output_avg)
+
+            # 處理 Last Frame
+            if os.path.exists(output_last):
+                print(
+                    f"  >> Skipping Last Frame: {os.path.basename(output_last)} already exists."
+                )
+            else:
+                save_last_frame_from_video(input_path, output_last)
 
     print("\n--- All tasks completed ---")

@@ -23,7 +23,7 @@ simulation:
   warmup_steps: 2000 # 跳過初始震盪
 
 boundary_condition:
-  type: [0, 0, 1, 0]
+  type: [0, 2, 1, 2] # 左(In), 上(Free-slip), 右(Out), 下(Free-slip)
   value:
     - [0.05, 0.0] # 保持 0.05，不要隨意變動速度，改變黏滯係數就好
     - [0.0, 0.0]

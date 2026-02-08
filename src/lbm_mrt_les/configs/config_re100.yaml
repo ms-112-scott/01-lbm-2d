@@ -23,7 +23,7 @@ simulation:
   warmup_steps: 0 # 驗證時從頭看，觀察流場建立過程
 
 boundary_condition:
-  type: [0, 0, 1, 0] # 左(In), 上(Wall), 右(Out), 下(Wall)
+  type: [0, 2, 1, 2] # 左(In), 上(Free-slip), 右(Out), 下(Free-slip)
   value:
     - [0.05, 0.0] # 入口速度降低至 0.05 以確保數值精確
     - [0.0, 0.0]
