@@ -14,11 +14,10 @@ from VideoRecorder import VideoRecorder
 ti.init(arch=ti.gpu)
 
 
-def main():
+def main(config_path):
     # ------------------------------------------------
     # 1. 初始化 Solver
     # ------------------------------------------------
-    config_path = "src/lbm_mrt_les/config.yaml"
     if len(sys.argv) > 1:
         config_path = sys.argv[1]
 
@@ -149,4 +148,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    configs = ["config_re100.yaml", "config_re2000.yaml", "config_re4000.yaml"]
+    path_prefix = "src/lbm_mrt_les/configs"
+
+    for config_name in configs:
+        main(f"{path_prefix}/{config_name}")

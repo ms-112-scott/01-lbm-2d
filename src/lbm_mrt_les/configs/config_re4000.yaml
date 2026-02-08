@@ -1,0 +1,45 @@
+# config_re4000.yaml
+simulation:
+  name: "Target_Re4000_Square"
+  nx: 800
+  ny: 300
+
+  # --- 物理參數 ---
+  # Re = (0.05 * 40) / niu = 4000
+  # => niu = 2.0 / 4000 = 0.0005 (這在單精確度下很極限)
+  niu: 0.0005
+
+  # --- LES 參數 ---
+  # 必須開大，用人工渦黏性來維持穩定
+  smagorinsky_constant: 0.35
+
+  # --- MRT 參數 ---
+  # 調高此參數有助於在高 Re 下穩定邊界反彈
+  ghost_moments_s: 1.4
+
+  # --- 視覺化 ---
+  steps_per_frame: 100
+  visualization_gaussian_sigma: 1.2
+  warmup_steps: 5000 # 高 Re 需要更長時間發展出穩定的湍流統計特性
+
+boundary_condition:
+  type: [0, 0, 1, 0]
+  value:
+    - [0.05, 0.0] # 堅持使用 0.05，這是 LBM 的甜蜜點
+    - [0.0, 0.0]
+    - [0.0, 0.0]
+    - [0.0, 0.0]
+  CL: 40.0
+
+mask:
+  enable: true
+  type: "rect"
+  params:
+    cx: 150.0
+    cy: 150.0
+    r: 20.0 # 總寬度 40
+
+foler_paths:
+  output: "src/lbm_mrt_les/output/re4000/"
+display:
+  max_size: 960

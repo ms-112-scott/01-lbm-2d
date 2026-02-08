@@ -7,12 +7,12 @@ simulation:
   name: "Room Jet Flow (LES)"
 
   # --- 網格解析度 ---
-  nx: 3200
-  ny: 1600
+  nx: 800
+  ny: 300
 
   # --- 物理與穩定性參數 ---
   # niu: 黏滯係數 (建議 0.0005 ~ 0.02)。越小 Re 越高，但易不穩定。
-  niu: 0.0006
+  niu: 0.0005
 
   # LES (大渦模擬) 參數
   smagorinsky_constant: 0.35
@@ -41,7 +41,7 @@ boundary_condition:
 
   # 特徵長度 (Characteristic Length)
   # 用於計算 Re 顯示。此處設為 36 (房間開口寬度)
-  CL: 80.0
+  CL: 40.0
 
 # ==========================================
 # 障礙物遮罩 (Mask)
@@ -52,9 +52,9 @@ mask:
 
   # 僅在 type: "cylinder" 時生效，"room" 模式會忽略以下參數
   params:
-    cx: 400.0
-    cy: 800.0
-    r: 80.0
+    cx: 100.0
+    cy: 150.0
+    r: 40.0
 
 foler_paths:
   output: "src/lbm_mrt_les/output/"

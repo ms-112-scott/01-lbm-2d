@@ -54,6 +54,7 @@ class VideoRecorder:
             return
         # 裁切並轉為 uint8
         img_cropped = img_array[: self.rec_height, : self.rec_width, :]
+        img_cropped = img_cropped[::-1, :, :]  # 垂直翻轉
         frame = (np.clip(img_cropped, 0, 1) * 255).astype(np.uint8)
         try:
             self.process.stdin.write(frame.tobytes())
