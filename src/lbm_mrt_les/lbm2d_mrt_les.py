@@ -54,6 +54,33 @@ class LBM2D_MRT_LES:
         self.niu = sim_cfg["niu"]
         self.tau_0 = 3.0 * self.niu + 0.5
 
+        # ==========================================
+        # [新增] 供外部呼叫的物理屬性 (Re, U_inlet)
+        # ==========================================
+        # 1. 特徵長度
+        self.characteristic_length = sim_cfg.get("characteristic_length", 1.0)
+
+        # 2. 入口速度 (u_inlet)
+        # 從 Boundary Condition 設定中提取，假設第一個 Value 為入口速度
+        # 格式通常為 [[u_x, u_y], ...]
+        bc_values = self.config["boundary_condition"].get("value", [[0.0, 0.0]])
+        self.u_inlet = np.array(bc_values[0], dtype=np.float32)
+
+        # 計算特徵速度 (Scalar)
+        u_char = np.linalg.norm(self.u_inlet)
+
+        # 3. 計算雷諾數 (Reynolds Number)
+        # Re = (U * L) / niu
+        if self.niu > 0:
+            self.Re = (u_char * self.characteristic_length) / self.niu
+        else:
+            self.Re = float("inf")
+
+        print(
+            f"[Solver] Initialized: Re={self.Re:.2f}, U_char={u_char:.4f}, L={self.characteristic_length}"
+        )
+        # ==========================================
+
         # LES (大渦模擬) 參數
         self.C_smag = sim_cfg.get("smagorinsky_constant", 0.15)
         self.Cs_sq_factor = 18.0 * (self.C_smag**2)
@@ -353,20 +380,6 @@ class LBM2D_MRT_LES:
         self.f_old[ibc, jbc] = (
             self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
         )
-
-    def check_re(self):
-        u_vec = self.bc_value[0]
-        u_char = np.sqrt(u_vec[0] ** 2 + u_vec[1] ** 2)
-        # 嘗試從 config 讀取特徵長度 (CL), 若無則用預設值
-        l_char = self.config["boundary_condition"].get("CL", 20.0)
-        if self.config["mask"]["type"] == "cylinder":
-            l_char = self.config["mask"]["params"]["r"] * 2
-
-        print(f"--- [LES Info] ---")
-        print(f"Smagorinsky Constant (Cs): {self.C_smag}")
-        print(f"Ghost Moments S: {self.S_other} (Read from Config)")
-        utils.print_reynolds_info(u_char, l_char, self.niu, "Characteristic Length")
-        return (u_char * l_char) / self.niu
 
     def run_step(self, steps=1):
         """

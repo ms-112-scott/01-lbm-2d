@@ -4,6 +4,7 @@ import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit  # 用於擬合完美波形
+import cv2
 
 
 def load_config(path="config.yaml"):
@@ -76,20 +77,22 @@ def _create_rect_mask(nx, ny, cx, cy, r):
     return mask
 
 
-def _create_two_rooms_mask(nx, ny, shift_left=50, angle_deg=20):
+def _create_two_rooms_mask(nx, ny, params):
     mask = np.zeros((nx, ny))
 
     # --- 1. 原始參數設定 (保持不變) ---
-    w = 6  # 牆壁厚度
-    d_half = 8  # 開口寬度的一半
-    marginLR = 350
-    marginTD = 100
+    shift = params.get("shift_left", 50)
+    angle = params.get("angle_deg", 20)
+    w = params.get("w", 6)
+    d_half = params.get("d_half", 8)
+    margin_lr = params.get("margin_lr", 350)
+    margin_td = params.get("margin_td", 100)
 
     # 原始邊距計算
-    x_start = marginLR - shift_left
-    x_end = (nx - marginLR) - shift_left
-    y_start = marginTD
-    y_end = ny - marginTD
+    x_start = margin_lr - shift
+    x_end = (nx - margin_lr) - shift
+    y_start = margin_td
+    y_end = ny - margin_td
 
     room_width = x_end - x_start
     x_mid = x_start + int(room_width / 3)
@@ -97,7 +100,7 @@ def _create_two_rooms_mask(nx, ny, shift_left=50, angle_deg=20):
 
     # --- 2. 旋轉參數設定 (新增) ---
     # 將角度轉為弧度
-    theta = np.radians(angle_deg)
+    theta = np.radians(angle)
     cos_t = np.cos(theta)
     sin_t = np.sin(theta)
 
@@ -178,7 +181,8 @@ def create_mask(config):
             mask = _create_rect_mask(nx, ny, p["cx"], p["cy"], p["r"])
 
         elif m_type == "room":
-            mask = _create_two_rooms_mask(nx, ny)
+            p = mask_cfg["params"]
+            mask = _create_two_rooms_mask(nx, ny, p)
 
     return mask
 
@@ -196,7 +200,7 @@ def get_simulation_strategy(solver, u_inlet):
 
     # 計算流體穿過一次場域需要的步數 (Flow-through time)
     steps_per_pass = int(solver.nx / u_inlet)
-    target_passes = 10  # DFG 建議跑久一點
+    target_passes = 5  # DFG 建議跑久一點
     total_steps = steps_per_pass * target_passes
 
     print("=" * 40)
@@ -371,3 +375,39 @@ def plot_verification_results(out_dir, steps, cd, cl, re_num, u_mean, D):
     print(f"[Result] Max Cl:  {cl_max:.4f}")
     if popt is not None:
         print(f"[Result] Strouhal Number (St): {st_num:.4f}")
+
+
+def calcu_gui_size(raw_w, raw_h, max_display_size=None):
+    """
+    計算最終顯示尺寸
+    Returns: (target_w, target_h) 均為整數，且保證 >= 1
+    """
+    # 預設為原始尺寸
+    target_w, target_h = raw_w, raw_h
+
+    # 執行縮放計算
+    if max_display_size and max_display_size > 0:
+        max_side = max(raw_w, raw_h)
+        if max_side > max_display_size:
+            scale_ratio = max_display_size / max_side
+            target_w = int(raw_w * scale_ratio)
+            target_h = int(raw_h * scale_ratio)
+
+    # 防呆機制：確保不會出現 0x0 導致 FFmpeg 崩潰
+    target_w = max(1, target_w)
+    target_h = max(1, target_h)
+
+    return target_w, target_h * 2
+
+
+def apply_resize(img, target_w, target_h):
+    """
+    執行影像縮放
+    只有在尺寸不同時才呼叫 cv2.resize，節省效能
+    """
+    current_h, current_w = img.shape[:2]
+
+    if current_w == target_w and current_h == target_h:
+        return img
+
+    return cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_LINEAR)

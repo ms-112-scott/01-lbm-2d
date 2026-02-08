@@ -40,6 +40,6 @@ mask:
     r: 20.0 # 總寬度 40
 
 foler_paths:
-  output: "src/lbm_mrt_les/output/re2000/"
+  output: "output/re2000/"
 display:
   max_size: 960

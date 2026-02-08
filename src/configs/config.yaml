@@ -57,7 +57,7 @@ mask:
     r: 40.0
 
 foler_paths:
-  output: "src/lbm_mrt_les/output/"
+  output: "output/"
 
 display:
   max_size: 960

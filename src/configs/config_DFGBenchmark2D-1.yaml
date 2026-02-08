@@ -32,6 +32,6 @@ mask:
     cy: 140.0 # 稍微偏心 (正中心是 150)
     r: 36.5 # 直徑 73 => 半徑 36.5
 foler_paths:
-  output: "src/lbm_mrt_les/output/DFGBenchmark2D-1/"
+  output: "output/DFGBenchmark2D-1/"
 display:
   max_size: 960
