@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 import os
 import sys
-import matplotlib.pyplot as plt  # 新增繪圖庫
+
 from tqdm import tqdm
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -13,188 +13,183 @@ from VideoRecorder import VideoRecorder
 
 ti.init(arch=ti.gpu)
 
+# ==========================================
+# 全局控制開關
+# ==========================================
+# True:  執行完整 LBM 模擬 -> 存檔 -> 後處理
+# False: 直接讀取上次的 .npz 檔 -> 後處理 (不需重新計算)
+RUN_SIMULATION = False
+
+
+# ==========================================
+# Main Execution
+# ==========================================
+
 
 def main(config_path):
-    # ------------------------------------------------
-    # 1. 初始化 Solver
-    # ------------------------------------------------
-    if len(sys.argv) > 1:
-        config_path = sys.argv[1]
-
+    # 1. 設定與路徑準備
     config = utils.load_config(config_path)
-    mask = utils.create_mask(config)
 
-    solver = LBM2D_MRT_LES(config, mask_data=mask)
-    solver.init()
-    solver.Re = solver.check_re()
-
-    # ------------------------------------------------
-    # [策略監督] 計算 Flow-through Time (FTT)
-    # ------------------------------------------------
-    inlet_vel_vec = config["boundary_condition"]["value"][0]
-    u_inlet = np.linalg.norm(inlet_vel_vec)
-
-    if u_inlet < 1e-6:
-        print("[Warning] Inlet velocity is nearly zero. Defaulting to 100,000 steps.")
-        max_simulation_steps = 100000
-    else:
-        # 計算由左至右穿過一次所需的步數
-        steps_per_pass = int(solver.nx / u_inlet)
-        target_passes = 10  # DFG 建議跑久一點以觀察週期性 (建議至少 10-20 passes)
-        max_simulation_steps = steps_per_pass * target_passes
-
-        print("=" * 40)
-        print(f"   SIMULATION STRATEGY: {target_passes} PASSES")
-        print("=" * 40)
-        print(f"Domain Length (nx) : {solver.nx}")
-        print(f"Inlet Velocity (U) : {u_inlet:.4f}")
-        print(f"Steps per Pass     : {steps_per_pass}")
-        print(f"Target Total Steps : {max_simulation_steps}")
-        print("=" * 40)
-
-    # ------------------------------------------------
-    # 2. 初始化 Visualizer & GUI & Output
-    # ------------------------------------------------
-    max_size = config.get("display", {}).get("max_size", 1024)
-    viz = LBMVisualizer(
-        nx=solver.nx,
-        ny=solver.ny,
-        viz_sigma=config["simulation"].get("visualization_gaussian_sigma", 1.0),
-        max_display_size=max_size,
-    )
-    display_res = viz.get_display_size()
-    gui = ti.GUI("Room Jet Flow (DFG Validation)", res=display_res)
-
-    # 準備輸出路徑
-    if "foler_paths" in config and "output" in config["foler_paths"]:
-        out_dir = config["foler_paths"]["output"]
-    else:
-        out_dir = config.get("output", {}).get("video_dir", "./output")
+    # 輸出路徑 (提早定義以便讀取)
+    out_dir = config.get("foler_paths", {}).get("output", "./output")
     os.makedirs(out_dir, exist_ok=True)
+    data_path = os.path.join(out_dir, "simulation_data.npz")
 
-    # 錄影設定
-    recorder = None
-    try:
-        video_path = os.path.join(
-            out_dir, f"Re{int(solver.Re)}_nx{solver.nx}_ForceTest.mp4"
+    # 預先定義變數，確保後處理區塊有值可用
+    steps_arr = None
+    fx_arr = None
+    fy_arr = None
+    re_val = 0.0
+    u_max = 0.0
+    D = 73.0
+
+    # ==========================================
+    # 分支 A: 執行模擬 (Simulation Phase)
+    # ==========================================
+    if RUN_SIMULATION:
+        print(">>> Mode: FULL SIMULATION")
+        mask = utils.create_mask(config)
+
+        solver = LBM2D_MRT_LES(config, mask_data=mask)
+        solver.init()
+        solver.Re = solver.check_re()
+
+        # 紀錄物理參數
+        re_val = solver.Re
+        D = config["simulation"].get("characteristic_length", 73.0)
+        u_inlet_vec = config["boundary_condition"]["value"][0]
+        u_max = np.linalg.norm(u_inlet_vec)
+
+        # 設定模擬步數
+        max_steps = 100000  # 或使用 utils.get_simulation_strategy
+
+        # 視覺化設置
+        viz = LBMVisualizer(
+            nx=solver.nx,
+            ny=solver.ny,
+            viz_sigma=config["simulation"].get("visualization_gaussian_sigma", 1.0),
         )
-        recorder = VideoRecorder(
-            video_path, width=display_res[0], height=display_res[1], fps=30
-        )
-        recorder.start()
-        print(f"[Video] Saving to: {video_path}")
-    except Exception as e:
-        print(f"[Warning] VideoRecorder init failed: {e}")
+        gui = ti.GUI("DFG Benchmark Validator", res=viz.get_display_size())
+
+        # 錄影
         recorder = None
+        try:
+            v_path = os.path.join(out_dir, f"Re{int(solver.Re)}_Sim.mp4")
+            recorder = VideoRecorder(v_path, width=viz.width, height=viz.height, fps=30)
+            recorder.start()
+        except Exception as e:
+            print(f"[Warn] Video init failed: {e}")
 
-    # --- [新增] 力學數據容器 ---
-    history_fx = []
-    history_fy = []
-    history_steps = []
+        # 數據容器
+        history_fx = []
+        history_fy = []
+        history_steps = []
 
-    print("--- Simulation Started ---")
+        print(f"--- Simulation Started (Re={solver.Re:.2f}) ---")
 
-    # ------------------------------------------------
-    # 3. 主迴圈
-    # ------------------------------------------------
-    current_steps = 0
+        # 主迴圈
+        current_steps = 0
+        with tqdm(total=max_steps, unit="step") as pbar:
+            while gui.running and current_steps < max_steps:
+                # A. 運算
+                solver.run_step(solver.steps_per_frame)
+                current_steps += solver.steps_per_frame
 
-    with tqdm(total=max_simulation_steps, unit="step", desc="LBM Progress") as pbar:
+                # B. 採樣受力
+                forces = solver.get_force()  # returns [fx, fy]
+                history_fx.append(forces[0])
+                history_fy.append(forces[1])
+                history_steps.append(current_steps)
 
-        while gui.running and current_steps < max_simulation_steps:
+                # C. 顯示與進度條
+                pbar.set_postfix(Fx=f"{forces[0]:.3e}", Fy=f"{forces[1]:.3e}")
+                pbar.update(solver.steps_per_frame)
 
-            # A. 物理步進
-            solver.run_step(solver.steps_per_frame)
-            current_steps += solver.steps_per_frame
+                # D. 渲染畫面
+                vel, mask_data = solver.get_physical_fields()
+                img = viz.process_frame(vel, mask_data)
+                gui.set_image(img)
+                gui.show()
 
-            # --- [新增] 獲取並記錄力 ---
-            # 注意：get_force 返回的是 numpy array [fx, fy]
-            forces = solver.get_force()
-            fx, fy = forces[0], forces[1]
+                if recorder:
+                    recorder.write_frame(np.transpose(img, (1, 0, 2)))
 
-            history_fx.append(fx)
-            history_fy.append(fy)
-            history_steps.append(current_steps)
+        # 收尾
+        if recorder:
+            recorder.stop()
+        gui.close()
 
-            # 更新進度條文字顯示當前受力 (即時監控)
-            pbar.set_postfix(Fx=f"{fx:.4e}", Fy=f"{fy:.4e}")
-            pbar.update(solver.steps_per_frame)
+        # 轉換為 Numpy
+        steps_arr = np.array(history_steps)
+        fx_arr = np.array(history_fx)
+        fy_arr = np.array(history_fy)
 
-            # B. 獲取數據 & 渲染
-            vel, mask_data = solver.get_physical_fields()
-            img_gui = viz.process_frame(vel, mask_data)
+        # 儲存原始數據 (包含物理參數 metadata，這很重要！)
+        print(f"\n[Save] Saving data to {data_path}...")
+        np.savez(
+            data_path,
+            steps=steps_arr,
+            fx=fx_arr,
+            fy=fy_arr,
+            # 額外儲存 metadata，讓後處理模式知道當時的物理條件
+            re_val=re_val,
+            u_max=u_max,
+            D=D,
+        )
 
-            gui.set_image(img_gui)
-            gui.show()
+    # ==========================================
+    # 分支 B: 僅讀取數據 (Load Only Phase)
+    # ==========================================
+    else:
+        print(">>> Mode: POST-PROCESSING ONLY (Loading Data)")
+        if not os.path.exists(data_path):
+            print(f"[Error] Data file not found: {data_path}")
+            print("Please set RUN_SIMULATION = True to generate data first.")
+            return
 
-            if recorder:
-                img_video = np.transpose(img_gui, (1, 0, 2))
-                recorder.write_frame(img_video)
+        # 讀取檔案
+        data = np.load(data_path)
+        steps_arr = data["steps"]
+        fx_arr = data["fx"]
+        fy_arr = data["fy"]
 
-    # ------------------------------------------------
-    # 4. 結束處理與繪圖
-    # ------------------------------------------------
-    if recorder:
-        recorder.stop()
+        # 嘗試讀取 metadata (兼容舊檔案的防呆)
+        if "re_val" in data:
+            re_val = float(data["re_val"])
+            u_max = float(data["u_max"])
+            D = float(data["D"])
+            print(f"[Load] Metadata loaded: Re={re_val:.2f}, U_max={u_max}, D={D}")
+        else:
+            # 如果讀到舊版資料，嘗試從 config 抓取 (備用方案)
+            print("[Warn] Metadata not found in .npz, estimating from Config...")
+            u_inlet_vec = config["boundary_condition"]["value"][0]
+            u_max = np.linalg.norm(u_inlet_vec)
+            D = config["simulation"].get("characteristic_length", 73.0)
+            # Re 只能估算或手動指定
+            re_val = 100.0
 
-    print(f"\n--- Simulation Completed. Generating Force Plots... ---")
+    # ==========================================
+    # 通用後處理 (Post-Processing Phase)
+    # ==========================================
+    print("\n--- Analyzing Data ---")
 
-    # 轉換為 Numpy 陣列以便繪圖
-    history_steps = np.array(history_steps)
-    history_fx = np.array(history_fx)
-    history_fy = np.array(history_fy)
+    # 無論數據來自模擬還是檔案，都重新計算係數
+    # 這樣你可以隨時調整 compute_coefficients 的公式而不用重跑模擬
+    cd_arr, cl_arr, u_mean = utils.compute_coefficients(fx_arr, fy_arr, u_max, D)
 
-    # --- [新增] 儲存原始數據 (方便後續做 FFT 分析) ---
-    data_path = os.path.join(out_dir, f"force_data_Re{int(solver.Re)}.npz")
-    np.savez(data_path, steps=history_steps, fx=history_fx, fy=history_fy)
-    print(f"[Data] Raw force data saved to: {data_path}")
-
-    # --- [新增] 繪製力學曲線圖 ---
-    plt.figure(figsize=(12, 8))
-
-    # Subplot 1: Drag Force (Fx)
-    plt.subplot(2, 1, 1)
-    plt.plot(history_steps, history_fx, label="Drag Force (Fx)", color="blue")
-    plt.title(f"Hydrodynamic Forces on Cylinder (Re={int(solver.Re)})")
-    plt.ylabel("Force (Lattice Units)")
-    plt.grid(True, which="both", linestyle="--", alpha=0.7)
-    plt.legend()
-
-    # Subplot 2: Lift Force (Fy)
-    plt.subplot(2, 1, 2)
-    plt.plot(history_steps, history_fy, label="Lift Force (Fy)", color="red")
-    plt.xlabel("Simulation Steps")
-    plt.ylabel("Force (Lattice Units)")
-    plt.grid(True, which="both", linestyle="--", alpha=0.7)
-    plt.legend()
-
-    # 儲存圖片
-    plot_path = os.path.join(out_dir, f"force_plot_Re{int(solver.Re)}.png")
-    plt.tight_layout()
-    plt.savefig(plot_path)
-    plt.close()  # 關閉 plot 釋放記憶體
-
-    print(f"[Plot] Force history plot saved to: {plot_path}")
-    print(f"[Info] Check the plot. If Re=100, Fy should oscillate sinusoidally!")
-
-    gui.close()
+    # 繪製驗證圖
+    utils.plot_verification_results(
+        out_dir, steps_arr, cd_arr, cl_arr, re_val, u_mean, D
+    )
 
 
 if __name__ == "__main__":
-    configs = ["config_DFGBenchmark2D-1.yaml"]  # 預設讀取 DFG 驗證設定
-    path_prefix = "src/lbm_mrt_les/configs"  # 請確認您的路徑是否正確
-
-    # 如果有參數傳入，優先使用參數
+    # 簡單的參數處理
+    cfg_path = "src/lbm_mrt_les/configs/config_DFGBenchmark2D-1.yaml"
     if len(sys.argv) > 1:
-        main(sys.argv[1])
+        cfg_path = sys.argv[1]
+
+    if os.path.exists(cfg_path):
+        main(cfg_path)
     else:
-        # 否則跑預設列表
-        for config_name in configs:
-            full_path = f"{path_prefix}/{config_name}"
-            # 防呆檢查
-            if os.path.exists(full_path):
-                main(full_path)
-            elif os.path.exists(config_name):  # 檢查是否在當前目錄
-                main(config_name)
-            else:
-                print(f"Error: Config file not found: {full_path}")
+        print(f"Error: Config file not found: {cfg_path}")

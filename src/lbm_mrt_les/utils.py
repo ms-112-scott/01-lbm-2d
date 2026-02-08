@@ -1,7 +1,9 @@
+import os
 import sys
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit  # 用於擬合完美波形
 
 
 def load_config(path="config.yaml"):
@@ -179,3 +181,193 @@ def create_mask(config):
             mask = _create_two_rooms_mask(nx, ny)
 
     return mask
+
+
+# ==========================================
+# Helper Functions: 物理計算與數據處理
+# ==========================================
+
+
+def get_simulation_strategy(solver, u_inlet):
+    """計算模擬策略：總步數與 Pass 數"""
+    if u_inlet < 1e-6:
+        print("[Warning] Inlet velocity is nearly zero. Defaulting to 100,000 steps.")
+        return 100000, 0
+
+    # 計算流體穿過一次場域需要的步數 (Flow-through time)
+    steps_per_pass = int(solver.nx / u_inlet)
+    target_passes = 10  # DFG 建議跑久一點
+    total_steps = steps_per_pass * target_passes
+
+    print("=" * 40)
+    print(f"   SIMULATION STRATEGY: {target_passes} PASSES")
+    print(f"   (1 Pass ~ {steps_per_pass} steps)")
+    print("=" * 40)
+    print(f"Domain Length (nx) : {solver.nx}")
+    print(f"Inlet Velocity (U) : {u_inlet:.4f}")
+    print(f"Target Total Steps : {total_steps}")
+    print("=" * 40)
+
+    return total_steps, steps_per_pass
+
+
+def compute_coefficients(fx_arr, fy_arr, u_max, D, rho=1.0):
+    """
+    將 Lattice Force 轉換為無因次係數 Cd (阻力) 和 Cl (升力)
+    DFG Benchmark 定義: U_mean = 2/3 * U_max (拋物線入口)
+    """
+    # 拋物線入口的平均速度
+    u_mean = (2.0 / 3.0) * u_max
+
+    # 動壓 * 特徵長度 (分母) -> 0.5 * rho * U_mean^2 * D
+    denominator = 0.5 * rho * (u_mean**2) * D
+
+    cd_arr = fx_arr / denominator
+    cl_arr = fy_arr / denominator
+
+    return cd_arr, cl_arr, u_mean
+
+
+def fit_sine_wave(t, signal):
+    """
+    嘗試對信號進行正弦波擬合： y = A * sin(omega * t + phi) + offset
+    用於驗證升力是否為完美的卡門渦街震盪
+    """
+
+    def sine_func(t, A, omega, phi, offset):
+        return A * np.sin(omega * t + phi) + offset
+
+    # 初始猜測
+    guess_amp = (np.max(signal) - np.min(signal)) / 2
+    guess_offset = np.mean(signal)
+
+    # 透過 FFT 猜測頻率 (簡單估算)
+    fft_vals = np.fft.rfft(signal - guess_offset)
+    fft_freqs = np.fft.rfftfreq(len(signal))
+    guess_freq_idx = np.argmax(np.abs(fft_vals))
+    guess_omega = 2 * np.pi * fft_freqs[guess_freq_idx]
+
+    try:
+        # 進行曲線擬合
+        popt, _ = curve_fit(
+            sine_func,
+            t,
+            signal,
+            p0=[guess_amp, guess_omega, 0, guess_offset],
+            maxfev=10000,
+        )
+        fitted_curve = sine_func(t, *popt)
+        return fitted_curve, popt  # popt = [A, omega, phi, offset]
+    except:
+        print("[Warn] Sine wave fitting failed.")
+        return None, None
+
+
+# ==========================================
+# Helper Functions: 繪圖與驗證
+# ==========================================
+
+
+def plot_verification_results(out_dir, steps, cd, cl, re_num, u_mean, D):
+    """
+    繪製包含「完美波對照」的驗證圖
+    """
+    # 只取後 50% 的數據進行穩定性分析與繪圖 (避免初始震盪影響)
+    start_idx = int(len(steps) * 0.5)
+
+    t_stable = steps[start_idx:]
+    cd_stable = cd[start_idx:]
+    cl_stable = cl[start_idx:]
+
+    # --- 統計數據 ---
+    cd_mean = np.mean(cd_stable)
+    cl_max = np.max(np.abs(cl_stable))  # 取絕對值最大值作為幅值
+
+    # --- 擬合正弦波 (Perfect Wave) ---
+    # 為了擬合方便，我們將 t 歸零
+    t_local = np.arange(len(cl_stable))
+    fitted_wave, popt = fit_sine_wave(t_local, cl_stable)
+
+    # 計算 Strouhal Number (St)
+    st_num = 0.0
+    if popt is not None:
+        omega = popt[1]  # 角頻率
+        freq = omega / (2 * np.pi)  # 週期/step
+        # St = f * D / U_mean
+        steps_per_sample = 10  # 務必確認這與你模擬時的設定一致
+        freq_per_step = (omega / (2 * np.pi)) / steps_per_sample
+
+        # St = f * D / U_mean
+        st_num = freq_per_step * D / u_mean
+
+    # --- 開始繪圖 ---
+    plt.figure(figsize=(14, 10))
+    plt.suptitle(f"DFG 2D Benchmark Validation (Re={int(re_num)})", fontsize=16)
+
+    # 1. 阻力係數 (Drag Coefficient)
+    plt.subplot(2, 1, 1)
+    plt.plot(steps, cd, label="Simulated $C_D$", color="tab:blue", linewidth=1.5)
+    plt.axhline(
+        cd_mean,
+        color="black",
+        linestyle="--",
+        alpha=0.7,
+        label=f"Mean $C_D$ = {cd_mean:.4f}",
+    )
+    plt.ylabel("Drag Coefficient ($C_D$)")
+    plt.title(f"Drag Coefficient History (Ref: 3.22 ~ 3.24)")
+    plt.legend(loc="upper right")
+    plt.grid(True, alpha=0.3)
+
+    # 2. 升力係數 (Lift Coefficient) + 完美波
+    plt.subplot(2, 1, 2)
+    plt.plot(
+        t_stable,
+        cl_stable,
+        label="Simulated $C_L$ (Stable Region)",
+        color="tab:red",
+        linewidth=2,
+        alpha=0.8,
+    )
+
+    if fitted_wave is not None:
+        plt.plot(
+            t_stable,
+            fitted_wave,
+            label="Perfect Sine Wave Fit",
+            color="lime",
+            linestyle="--",
+            linewidth=1.5,
+        )
+        info_text = (
+            f"Analysis Result:\n"
+            f"Max $C_L$: {cl_max:.4f} (Ref: ~1.0)\n"
+            f"Strouhal (St): {st_num:.4f} (Ref: 0.29~0.30)"
+        )
+        # 在圖表上標註數據
+        plt.text(
+            0.02,
+            0.95,
+            info_text,
+            transform=plt.gca().transAxes,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+        )
+
+    plt.xlabel("Simulation Steps")
+    plt.ylabel("Lift Coefficient ($C_L$)")
+    plt.title("Lift Coefficient vs Perfect Sine Wave")
+    plt.legend(loc="upper right")
+    plt.grid(True, alpha=0.3)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    save_path = os.path.join(out_dir, f"Validation_Re{int(re_num)}.png")
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+
+    print(f"\n[Validation] Plot saved to: {save_path}")
+    print(f"[Result] Mean Cd: {cd_mean:.4f}")
+    print(f"[Result] Max Cl:  {cl_max:.4f}")
+    if popt is not None:
+        print(f"[Result] Strouhal Number (St): {st_num:.4f}")
