@@ -20,6 +20,8 @@ def init_simulation_env(config, out_dir):
     初始化模擬環境：Solver, Mask, Visualizer, GUI, Recorder
     """
     # 1. Create Mask
+    png_path = utils.get_random_png_path("src/GenMask/rect_masks")
+    config["mask"]["params"]["path"] = png_path  # 動態指定 PNG 路徑
     mask = utils.create_mask(config)
 
     gui_w, gui_h = utils.calcu_gui_size(
@@ -97,7 +99,7 @@ def main_run_sim_case(config_path):
 
 if __name__ == "__main__":
     # 指定設定檔路徑
-    cfg_name = "config_re4000_room.yaml"
+    cfg_name = "config_png_extend.yaml"
     path = os.path.join("src/configs", cfg_name)
 
     if os.path.exists(path):

@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit  # 用於擬合完美波形
 import cv2
 
+import random
+
 
 def load_config(path="config.yaml"):
     """讀取 YAML 設定檔"""
@@ -161,6 +163,46 @@ def _create_two_rooms_mask(nx, ny, params):
     return mask
 
 
+def _create_from_png(nx, ny, params):
+    """
+    從 PNG 讀取 Mask
+    """
+    path = params.get("path")
+
+    if not path or not os.path.exists(path):
+        raise FileNotFoundError(f"[Error] Mask file not found: {path}")
+
+    # 1. 以灰階模式讀取
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+
+    if img is None:
+        raise ValueError(f"[Error] Failed to load image: {path}")
+
+    # 2. 強制縮放到模擬網格大小 (nx, ny)
+    # cv2.resize 接受 (width, height) -> (nx, ny)
+    # resize 後的 img numpy array 形狀會是 (height, width) -> (ny, nx)
+    if img.shape != (ny, nx):
+        print(f"  -> Resizing mask from {img.shape[::-1]} to ({nx}, {ny})")
+        img = cv2.resize(img, (nx, ny), interpolation=cv2.INTER_NEAREST)
+
+    # 3. 二值化轉換
+    threshold = 127
+    inverse = params.get("inverse", False)
+
+    if inverse:
+        mask = img > threshold
+    else:
+        mask = img < threshold
+
+    # 4. [關鍵修正] 轉置矩陣 (Transpose)
+    # Numpy/OpenCV 是 [y, x] (1024, 2048)
+    # Taichi Solver 是 [x, y] (2048, 1024)
+    # 必須使用 .T 將其轉置，否則無法塞入 taichi field
+    mask = mask.T
+
+    return mask.astype(bool)
+
+
 def create_mask(config):
     mask_cfg = config.get("mask", {})
     mask = None
@@ -171,18 +213,29 @@ def create_mask(config):
         m_type = mask_cfg["type"]
         print(f"Generating Mask: {m_type}")
 
-        # --- 更新：Mask 生成邏輯分支 ---
         if m_type == "cylinder":
             p = mask_cfg["params"]
             mask = _create_cylinder_mask(nx, ny, p["cx"], p["cy"], p["r"])
 
-        elif m_type == "rect":  # 新增 rect 判斷
+        elif m_type == "rect":
             p = mask_cfg["params"]
             mask = _create_rect_mask(nx, ny, p["cx"], p["cy"], p["r"])
 
         elif m_type == "room":
             p = mask_cfg["params"]
             mask = _create_two_rooms_mask(nx, ny, p)
+
+        # --- 新增 PNG 讀取支援 ---
+        elif m_type == "png":
+            p = mask_cfg["params"]
+            mask = _create_from_png(nx, ny, p)
+            print(
+                f"mask shape after loading: {mask.shape}, unique values: {np.unique(mask)}"
+            )
+
+    # 如果沒有 mask 生成 (或 type 不對)，建立一個全 False (全流體) 的空 mask
+    if mask is None:
+        mask = np.zeros((ny, nx), dtype=bool)
 
     return mask
 
@@ -523,3 +576,27 @@ def draw_zone_overlay(gui, zones, split_ratio=0.5, y_offset=0.0):
         color=color_sponge,
         font_size=20,
     )
+
+
+def get_random_png_path(folder_path):
+    """
+    從指定資料夾中隨機挑選一張 PNG 圖片，並回傳完整路徑。
+    """
+    # 1. 檢查資料夾是否存在
+    if not os.path.exists(folder_path):
+        raise FileNotFoundError(f"[Error] Folder not found: {folder_path}")
+
+    # 2. 列出所有檔案並篩選 .png (不分大小寫)
+    files = [f for f in os.listdir(folder_path) if f.lower().endswith(".png")]
+
+    # 3. 檢查是否有圖
+    if not files:
+        raise ValueError(f"[Error] No PNG files found in: {folder_path}")
+
+    # 4. 隨機挑選
+    selected_file = random.choice(files)
+
+    # 5. 組合完整路徑 (跨平台相容)
+    full_path = os.path.join(folder_path, selected_file)
+
+    return full_path

@@ -48,7 +48,7 @@ class LBM2D_MRT_LES:
         self.nx = sim_cfg["nx"]
         self.ny = sim_cfg["ny"]
         self.steps_per_frame = sim_cfg.get("steps_per_frame", 10)
-        self.warmup_steps = sim_cfg.get("warmup_steps", 0)
+        self.warmup_steps = sim_cfg.get("warmup_steps", 1000)
 
         # 物理參數
         self.niu = sim_cfg["niu"]
@@ -344,7 +344,8 @@ class LBM2D_MRT_LES:
     def apply_bc(self):
         self.frame_count[None] += 1
         # 緩啟動
-        ramp = tm.min(1.0, float(self.frame_count[None]) / self.warmup_steps)
+
+        ramp = tm.min(1.0, float(self.frame_count[None]) / self.warmup_steps + 1e-5)
 
         for j in range(1, self.ny - 1):
             self.apply_bc_core(1, 0, 0, j, 1, j, ramp)

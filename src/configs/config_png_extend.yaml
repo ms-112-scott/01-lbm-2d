@@ -1,7 +1,7 @@
 simulation:
   name: "Re4000_Room_Stable"
-  nx: 1600
-  ny: 1000
+  nx: 2048
+  ny: 1024
 
   # --- 物理核心 ---
   # 定義: Re=4000 (基於建築寬度 L=100)
@@ -9,7 +9,7 @@ simulation:
   niu: 0.00125
 
   # 這只是給後處理算 Cd 用，告訴程式我們是用 100 當基準
-  characteristic_length: 100.0
+  characteristic_length: 160.0
 
   # --- 穩定性控制 ---
   # 因為有尖角，開啟 LES
@@ -33,23 +33,16 @@ boundary_condition:
 
 mask:
   enable: true
-  type: "room"
+  type: "png"
   params:
-    shift_left: 500
-    angle_deg: 20
-
-    # 維持原幾何
-    w: 12
-    d_half: 16 # 開口 16
-    margin_lr: 700
-    margin_td: 400 # 這裡隱含了建築寬度約為 (800 - 350*2) = 100
+    path: "src/GenMask/rect_masks/mask_phys_r4_0001_L400.png"
 
 foler_paths:
-  output: "output/re4000_stable/"
+  output: "output/png/"
 
 display:
   max_size: 960
-  gui_show: False
+  gui_show: True
   show_zone_overlay: True
 
   zone:
@@ -58,7 +51,7 @@ display:
     # 下 邊界+sponge_y+buffer
     # 左 邊界+inlet_buffer
     # 右 邊界-sponge_x-buffer
-    sponge_y: 40 # 上下邊界阻尼層
-    sponge_x: 200 # 右側出口阻尼層
-    buffer: 150 # ROI到阻尼層的緩衝區
-    inlet_buffer: 100 #入口的緩衝區
+    sponge_y: 64 # 上下邊界阻尼層
+    sponge_x: 256 # 右側出口阻尼層
+    buffer: 64 # ROI到阻尼層的緩衝區
+    inlet_buffer: 128 #入口的緩衝區
