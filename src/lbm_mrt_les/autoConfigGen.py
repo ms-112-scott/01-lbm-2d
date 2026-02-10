@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import os
 import random
+import utils
 
 # ==========================================
 # 參數設定 (Configuration)
@@ -109,27 +110,6 @@ def generate_sample(n_rects, sample_id):
     return mask
 
 
-# ==========================================
-# 新增：計算特徵長度 (Characteristic Length)
-# ==========================================
-def calculate_characteristic_length(mask):
-    """
-    計算流場的特徵長度 L。
-    定義：Y 軸上的總投影長度 (Total Projected Length)。
-    物理意義：這是流體必須繞過的「有效障礙物寬度」，直接決定了
-             狹縫處的加速效應 (Venturi effect) 和雷諾數的尺度。
-    """
-    # 1. 取得 Y 軸投影 (Axis 1 = X軸方向壓縮 -> 得到 Y 軸分佈)
-    # Mask: 255=Fluid, 0=Object
-    # np.min: 如果一行中有任何黑色像素(0)，該行結果就是 0
-    y_projection = np.min(mask, axis=1)
-
-    # 2. 統計被佔用的像素總數 (即特徵長度 L)
-    L_char = np.sum(y_projection == 0)
-
-    return int(L_char)
-
-
 def main():
     if not os.path.exists(CONFIG["OUTPUT_DIR"]):
         os.makedirs(CONFIG["OUTPUT_DIR"])
@@ -144,7 +124,7 @@ def main():
             mask = generate_sample(r_count, i)
 
             # 2. 計算特徵長度
-            L_char = calculate_characteristic_length(mask)
+            L_char = utils.calculate_characteristic_length(mask)
 
             # 3. 檔名包含特徵長度 (L)
             # 格式: mask_phys_r{矩形數}_{編號}_L{特徵長度}.png

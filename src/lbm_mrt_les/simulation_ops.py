@@ -77,8 +77,8 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
     out_cfg = config["outputs"]
     zones = utils.get_zone_config(config)
 
-    # 運算批次 (Batch Size)
-    batch_size = sim_cfg["compute_batch_size"]
+    # 運算批次 (compute_step_size)
+    compute_step_size = sim_cfg["compute_step_size"]
 
     # 取得各項輸出的間隔 (Interval)
     gui_interval = out_cfg["gui"]["interval_steps"]
@@ -115,9 +115,9 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
             # 1. 核心運算 (LBM Compute)
             # =========================================================
             t0 = time.perf_counter()
-            solver.run_step(batch_size)
+            solver.run_step(compute_step_size)
             ti.sync()
-            current_steps += batch_size
+            current_steps += compute_step_size
             t1 = time.perf_counter()
             timings["compute"] = (t1 - t0) * 1000
 
@@ -150,7 +150,7 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
 
             # 更新 CLI 進度條
             pbar.set_postfix(Fx=f"{forces[0]:.3e}", Fy=f"{forces[1]:.3e}")
-            pbar.update(batch_size)
+            pbar.update(compute_step_size)
 
             # =========================================================
             # 4. 視覺化處理 (Visualization Pipeline)
@@ -192,29 +192,29 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
             # =========================================================
             # 5. HDF5 數據集寫入
             # =========================================================
-            # t0_fetch = time.perf_counter()
-            # is_data_step = out_cfg["dataset"]["enable"] and (
-            #     current_steps % data_interval == 0
-            # )
+            t0_fetch = time.perf_counter()
+            is_data_step = out_cfg["dataset"]["enable"] and (
+                current_steps % data_interval == 0
+            )
 
-            # if is_data_step and writer:
-            #     moments_raw = solver.get_moments_numpy()
-            #     t1_fetch = time.perf_counter()
-            #     timings["moment_fetch"] = (t1_fetch - t0_fetch) * 1000
+            if is_data_step and writer:
+                moments_raw = solver.get_moments_numpy()
+                t1_fetch = time.perf_counter()
+                timings["moment_fetch"] = (t1_fetch - t0_fetch) * 1000
 
-            #     t0_io = time.perf_counter()
-            #     writer.append(moments_raw)
-            #     t1_io = time.perf_counter()
-            #     timings["hdf5_io"] = (t1_io - t0_io) * 1000
-            # else:
-            #     timings["moment_fetch"] = 0.0
-            #     timings["hdf5_io"] = 0.0
+                t0_io = time.perf_counter()
+                writer.append(moments_raw)
+                t1_io = time.perf_counter()
+                timings["hdf5_io"] = (t1_io - t0_io) * 1000
+            else:
+                timings["moment_fetch"] = 0.0
+                timings["hdf5_io"] = 0.0
 
             # =========================================================
-            # [Profile Report]
+            # [Profile Report Console]
             # =========================================================
             total_time = (time.perf_counter() - t_loop_start) * 1000
-            if (current_steps // batch_size) % 10 == 0 and config["outputs"][
+            if (current_steps // compute_step_size) % 10 == 0 and config["outputs"][
                 "enable_profiling"
             ]:
                 print(f"\n[Profile] Step {current_steps} | Loop: {total_time:.1f}ms")
@@ -241,7 +241,7 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
         "u_max": float(np.linalg.norm(solver.u_inlet)),
         "D": float(config["simulation"]["characteristic_length"]),
         "data_interval": data_interval,
-        "batch_size": batch_size,
+        "compute_step_size": compute_step_size,
     }
 
     return metadata

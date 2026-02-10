@@ -47,7 +47,7 @@ class LBM2D_MRT_LES:
         self.name = sim_cfg["name"]
         self.nx = sim_cfg["nx"]
         self.ny = sim_cfg["ny"]
-        self.steps_per_frame = sim_cfg["compute_batch_size"]
+        self.steps_per_frame = sim_cfg["compute_step_size"]
         self.warmup_steps = sim_cfg["warmup_steps"]
 
         # 物理參數
@@ -120,6 +120,9 @@ class LBM2D_MRT_LES:
 
         # 用於儲存障礙物受力的累加器 (0D Field)
         self.force_sum = ti.Vector.field(2, dtype=ti.f32, shape=())
+
+        # 用於儲存 MRT 矩空間數據 (9個通道)，供數據集輸出使用
+        self.moments_field = ti.Vector.field(9, dtype=ti.f32, shape=(self.nx, self.ny))
 
     #  init 子函式: 常數與矩陣 (Constants)
     def _init_constants(self):
@@ -496,6 +499,87 @@ class LBM2D_MRT_LES:
     def get_force(self):
         self.compute_force_on_obstacle()
         return self.force_sum[None].to_numpy()
+
+    # endregion
+    # ------------------------------------------------
+
+    # ------------------------------------------------
+    # region moments for outputs
+    @ti.kernel
+    def compute_moments_for_output(self):
+        """
+        將 f 分布函數投影到 MRT 矩空間，準備輸出給 AI 訓練
+        順序對應標準 D2Q9 MRT (Lallemand & Luo):
+        0: rho (密度)
+        1: e   (能量 - 與壓力相關)
+        2: eps (能量平方 - 高階修正)
+        3: jx  (動量 x)
+        4: qx  (熱通流 x)
+        5: jy  (動量 y)
+        6: qy  (熱通流 y)
+        7: pxx (正應力 - 黏性相關)
+        8: pxy (切應力 - 渦旋相關)
+        """
+        for i, j in self.f_new:
+            f_val = self.f_new[i, j]
+
+            # --- 0. 密度 rho ---
+            rho = f_val.sum()
+
+            # --- 1. 能量 e (-4, -1, -1, -1, -1, 2, 2, 2, 2) ---
+            e = (
+                -4.0 * f_val[0]
+                - (f_val[1] + f_val[2] + f_val[3] + f_val[4])
+                + 2.0 * (f_val[5] + f_val[6] + f_val[7] + f_val[8])
+            )
+
+            # --- 2. 能量平方 epsilon (4, -2, -2, -2, -2, 1, 1, 1, 1) ---
+            eps = (
+                4.0 * f_val[0]
+                - 2.0 * (f_val[1] + f_val[2] + f_val[3] + f_val[4])
+                + (f_val[5] + f_val[6] + f_val[7] + f_val[8])
+            )
+
+            # --- 3. 動量 jx (0, 1, 0, -1, 0, 1, -1, -1, 1) ---
+            jx = f_val[1] - f_val[3] + f_val[5] - f_val[6] - f_val[7] + f_val[8]
+
+            # --- 4. 熱通流 qx (0, -2, 0, 2, 0, 1, -1, -1, 1) ---
+            qx = (
+                -2.0 * f_val[1]
+                + 2.0 * f_val[3]
+                + f_val[5]
+                - f_val[6]
+                - f_val[7]
+                + f_val[8]
+            )
+
+            # --- 5. 動量 jy (0, 0, 1, 0, -1, 1, 1, -1, -1) ---
+            jy = f_val[2] - f_val[4] + f_val[5] + f_val[6] - f_val[7] - f_val[8]
+
+            # --- 6. 熱通流 qy (0, 0, -2, 0, 2, 1, 1, -1, -1) ---
+            qy = (
+                -2.0 * f_val[2]
+                + 2.0 * f_val[4]
+                + f_val[5]
+                + f_val[6]
+                - f_val[7]
+                - f_val[8]
+            )
+
+            # --- 7. 正應力 pxx (0, 1, -1, 1, -1, 0, 0, 0, 0) ---
+            pxx = f_val[1] - f_val[2] + f_val[3] - f_val[4]
+
+            # --- 8. 切應力 pxy (0, 0, 0, 0, 0, 1, -1, 1, -1) ---
+            pxy = f_val[5] - f_val[6] + f_val[7] - f_val[8]
+
+            # 存入 Field (這裡就是你報錯的地方，現在填入完整的 9 個變數)
+            self.moments_field[i, j] = ti.Vector(
+                [rho, e, eps, jx, qx, jy, qy, pxx, pxy]
+            )
+
+    def get_moments_numpy(self):
+        self.compute_moments_for_output()
+        return self.moments_field.to_numpy()
 
     # endregion
     # ------------------------------------------------

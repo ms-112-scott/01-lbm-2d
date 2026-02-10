@@ -5,8 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit  # 用於擬合完美波形
 import cv2
-
+import shutil
 import random
+import time
+
+import json
+from datetime import datetime
 
 
 def load_config(path="config.yaml"):
@@ -469,3 +473,114 @@ def get_random_png_path(folder_path):
     full_path = os.path.join(folder_path, selected_file)
 
     return full_path
+
+
+def force_clean_cache():
+    """
+    [System] 強制清理 Taichi 快取
+    解決 Windows 下 'Lock file failed' 的問題
+    """
+    # 這是 Taichi 在 Windows 的預設路徑，根據你的報錯訊息設定
+    cache_path = "C:/taichi_cache/ticache"
+
+    if os.path.exists(cache_path):
+        try:
+            print(f"[System] Cleaning Taichi cache at: {cache_path}")
+            shutil.rmtree(cache_path, ignore_errors=True)
+            # 稍微等待一下 I/O 釋放，避免 Race Condition
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"[Warn] Failed to clean cache: {e}")
+    else:
+        print("[System] Cache directory not found (Clean start).")
+
+
+def save_case_metadata(json_path, case_id, metadata):
+    """
+    [IO] 將單一 Case 的 Metadata 更新到總表 JSON 中 (無 Class 版本)
+
+    Args:
+        json_path (str): 總表路徑 (e.g., './output/summary.json')
+        case_id (str): 該 Case 的唯一 ID (通常是檔名)
+        metadata (dict): 要寫入的數據字典
+    """
+
+    # -------------------------------------------------
+    # 1. 準備 Numpy 轉換器 (閉包或是直接定義)
+    # -------------------------------------------------
+    def convert_numpy(obj):
+        if isinstance(
+            obj,
+            (
+                np.int_,
+                np.intc,
+                np.intp,
+                np.int8,
+                np.int16,
+                np.int32,
+                np.int64,
+                np.uint8,
+                np.uint16,
+                np.uint32,
+                np.uint64,
+            ),
+        ):
+            return int(obj)
+        elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    # -------------------------------------------------
+    # 2. 讀取現有的 JSON (Read)
+    # -------------------------------------------------
+    full_data = {}
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                full_data = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            print(f"[Warn] JSON {json_path} corrupted or empty. Creating new.")
+            full_data = {}
+
+    # -------------------------------------------------
+    # 3. 更新數據 (Update)
+    # -------------------------------------------------
+    # 加上時間戳記
+    metadata["_updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # 使用 case_id 作為 Key (例如 'rect_001.png')
+    full_data[case_id] = metadata
+
+    # -------------------------------------------------
+    # 4. 寫回檔案 (Write)
+    # -------------------------------------------------
+    try:
+        with open(json_path, "w", encoding="utf-8") as f:
+            # 使用 default=convert_numpy 處理所有數值型別
+            json.dump(full_data, f, default=convert_numpy, indent=4, ensure_ascii=False)
+        print(f"[Metadata] Updated entry '{case_id}' in {os.path.basename(json_path)}")
+    except Exception as e:
+        print(f"[Error] Failed to save JSON metadata: {e}")
+
+
+# ==========================================
+# 新增：計算特徵長度 (Characteristic Length)
+# ==========================================
+def calculate_characteristic_length(mask):
+    """
+    計算流場的特徵長度 L。
+    定義：Y 軸上的總投影長度 (Total Projected Length)。
+    物理意義：這是流體必須繞過的「有效障礙物寬度」，直接決定了
+             狹縫處的加速效應 (Venturi effect) 和雷諾數的尺度。
+    """
+    # 1. 取得 Y 軸投影 (Axis 1 = X軸方向壓縮 -> 得到 Y 軸分佈)
+    # Mask: 255=Fluid, 0=Object
+    # np.min: 如果一行中有任何黑色像素(0)，該行結果就是 0
+    y_projection = np.min(mask, axis=1)
+
+    # 2. 統計被佔用的像素總數 (即特徵長度 L)
+    L_char = np.sum(y_projection == 0)
+
+    return int(L_char)
