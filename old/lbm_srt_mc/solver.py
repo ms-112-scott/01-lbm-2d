@@ -18,8 +18,8 @@ class LBMSolver:
         # 基礎參數設定
         self.nx: int = cfg["simulation"]["nx"]
         self.ny: int = cfg["simulation"]["ny"]
-        self.niu_lbm: float = cfg["simulation"]["niu"]
-        self.inv_tau: float.py = 1.0 / (3.0 * self.niu_lbm + 0.5)
+        self.nu_lbm: float = cfg["simulation"]["nu"]
+        self.inv_tau: float.py = 1.0 / (3.0 * self.nu_lbm + 0.5)
 
         inlet_vel: float = cfg["boundaries"]["values"][0][0]
         self.Tc: int = int(self.nx / max(inlet_vel, 0.001))
@@ -137,6 +137,6 @@ class LBMSolver:
             "status": status,
             "max_v": float(max_v),
             "avg_v": float(np.mean(vel_mag[self.mask.to_numpy() == 0])),
-            "re_max": float(max_v / self.niu_lbm),
+            "re_max": float(max_v / self.nu_lbm),
             "ma_max": float(max_v / 0.577),
         }

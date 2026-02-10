@@ -47,32 +47,32 @@ class LBM2D_MRT_LES:
         self.name = sim_cfg["name"]
         self.nx = sim_cfg["nx"]
         self.ny = sim_cfg["ny"]
-        self.steps_per_frame = sim_cfg.get("steps_per_frame", 10)
-        self.warmup_steps = sim_cfg.get("warmup_steps", 1000)
+        self.steps_per_frame = sim_cfg["compute_batch_size"]
+        self.warmup_steps = sim_cfg["warmup_steps"]
 
         # 物理參數
-        self.niu = sim_cfg["niu"]
-        self.tau_0 = 3.0 * self.niu + 0.5
+        self.nu = sim_cfg["nu"]
+        self.tau_0 = 3.0 * self.nu + 0.5
 
         # ==========================================
         # [新增] 供外部呼叫的物理屬性 (Re, U_inlet)
         # ==========================================
         # 1. 特徵長度
-        self.characteristic_length = sim_cfg.get("characteristic_length", 1.0)
+        self.characteristic_length = sim_cfg["characteristic_length"]
 
         # 2. 入口速度 (u_inlet)
         # 從 Boundary Condition 設定中提取，假設第一個 Value 為入口速度
         # 格式通常為 [[u_x, u_y], ...]
-        bc_values = self.config["boundary_condition"].get("value", [[0.0, 0.0]])
+        bc_values = self.config["boundary_condition"]["value"]
         self.u_inlet = np.array(bc_values[0], dtype=np.float32)
 
         # 計算特徵速度 (Scalar)
         u_char = np.linalg.norm(self.u_inlet)
 
         # 3. 計算雷諾數 (Reynolds Number)
-        # Re = (U * L) / niu
-        if self.niu > 0:
-            self.Re = (u_char * self.characteristic_length) / self.niu
+        # Re = (U * L) / nu
+        if self.nu > 0:
+            self.Re = (u_char * self.characteristic_length) / self.nu
         else:
             self.Re = float("inf")
 
@@ -82,14 +82,13 @@ class LBM2D_MRT_LES:
         # ==========================================
 
         # LES (大渦模擬) 參數
-        self.C_smag = sim_cfg.get("smagorinsky_constant", 0.15)
+        self.C_smag = sim_cfg["smagorinsky_constant"]
         self.Cs_sq_factor = 18.0 * (self.C_smag**2)
 
         # MRT 鬆弛參數
-        self.S_other = sim_cfg.get("ghost_moments_s", 1.2)
-
+        self.S_other = sim_cfg["ghost_moments_s"]
         # 視覺化參數
-        self.viz_sigma = sim_cfg.get("visualization_gaussian_sigma", 1.0)
+        self.viz_sigma = self.config["outputs"]["gui"]["gaussian_sigma"]
 
     #  init 子函式: 記憶體配置 (Fields)
     def _init_fields(self, mask_data):

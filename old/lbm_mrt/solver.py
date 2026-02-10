@@ -16,11 +16,11 @@ class LbmSolverMrt:
         # 基礎參數設定
         self.nx: int = cfg["simulation"]["nx"]
         self.ny: int = cfg["simulation"]["ny"]
-        self.niu_lbm: float = cfg["simulation"]["niu"]
+        self.nu_lbm: float = cfg["simulation"]["nu"]
 
         # --- [FIX 1] 修正鬆弛參數 ---
         # 物理鬆弛率 (控制黏度)
-        self.tau = 3.0 * self.niu_lbm + 0.5
+        self.tau = 3.0 * self.nu_lbm + 0.5
         s_nu = 1.0 / self.tau
 
         # 鬼影模態鬆弛率 (控制穩定性)
@@ -313,6 +313,6 @@ class LbmSolverMrt:
             "status": status,
             "max_v": float(max_v),
             "avg_v": float(np.mean(vel_mag[self.mask.to_numpy() == 0])),
-            "re_max": float(max_v * self.nx / self.niu_lbm),  # 簡單估算
+            "re_max": float(max_v * self.nx / self.nu_lbm),  # 簡單估算
             "ma_max": float(max_v / 0.577),
         }

@@ -22,7 +22,7 @@ class lbm_solver:
         name,  # 模擬案例名稱
         nx,  # 計算域寬度 (x方向網格數)
         ny,  # 計算域高度 (y方向網格數)
-        niu,  # 流體運動黏滯係數 (Kinematic Viscosity)
+        nu,  # 流體運動黏滯係數 (Kinematic Viscosity)
         bc_type,  # 邊界條件類型 [左, 上, 右, 下]: 0 -> Dirichlet (固定速度); 1 -> Neumann (自由流出)
         bc_value,  # 邊界條件數值: 如果 bc_type = 0，這裡指定速度向量 [u, v]
         mask_data=None,  # [新增] 外部傳入的障礙物遮罩 (Numpy Array)
@@ -30,12 +30,12 @@ class lbm_solver:
         self.name = name
         self.nx = nx
         self.ny = ny
-        self.niu = niu
+        self.nu = nu
 
         # --- 物理參數計算 ---
         # 計算鬆弛時間 (Relaxation time) tau
-        # 公式: niu = (cs^2) * (tau - 0.5)，其中聲速 cs^2 = 1/3
-        self.tau = 3.0 * niu + 0.5
+        # 公式: nu = (cs^2) * (tau - 0.5)，其中聲速 cs^2 = 1/3
+        self.tau = 3.0 * nu + 0.5
         self.inv_tau = 1.0 / self.tau
 
         # --- Taichi 場定義 (Fields) ---
@@ -362,7 +362,7 @@ if __name__ == "__main__":
         name="Karman Vortex (External Mask Fixed)",
         nx=nx,
         ny=ny,
-        niu=0.0005,
+        nu=0.0005,
         bc_type=[0, 0, 1, 0],  # 左邊入口固定速度，右邊自由流出
         bc_value=[[0.05, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
         mask_data=mask,  # 傳入 Numpy Mask

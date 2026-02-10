@@ -1,18 +1,18 @@
 boundary_condition:
   type:
-  - 0
-  - 0
-  - 1
-  - 0
+    - 0
+    - 0
+    - 1
+    - 0
   value:
-  - - 0.05
-    - 0.0
-  - - 0.0
-    - 0.0
-  - - 0.0
-    - 0.0
-  - - 0.0
-    - 0.0
+    - - 0.05
+      - 0.0
+    - - 0.0
+      - 0.0
+    - - 0.0
+      - 0.0
+    - - 0.0
+      - 0.0
 display:
   max_size: 960
   zone:
@@ -33,7 +33,7 @@ simulation:
   characteristic_length: 146.0
   ghost_moments_s: 1.0
   name: DFG_Benchmark_Re100
-  niu: 0.004866666666666666
+  nu: 0.004866666666666666
   nx: 2400
   ny: 600
   smagorinsky_constant: 0.0

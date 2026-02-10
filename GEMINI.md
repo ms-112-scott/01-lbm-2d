@@ -14,6 +14,7 @@
 
 1.  **標準 2 通道數據 (速度):**
     執行 `main.py` 腳本，將生成包含 X 和 Y 方向速度 `(Vx, Vy)` 的數據。
+
     ```bash
     python main.py
     ```
@@ -32,42 +33,42 @@
 
 **關鍵參數說明:**
 
--   `simulation`:
-    -   `name`: 模擬任務的名稱，輸出的檔案會儲存在 `output/<name>` 目錄下。
-    -   `niu`: 流體的黏滯係數，影響流場的雷諾數和穩定性。
-    -   `save_npy`: `true` 表示儲存 `.npy` 陣列數據。
-    -   `save_png`: `true` 表示儲存預覽圖像。
-    -   `save_step`: 每隔多少步儲存一次數據。
--   `boundaries`:
-    -   設定流場的邊界條件，如入口風速。
--   `obstacle`:
-    -   `use_mask`: `true` 表示使用 PNG 圖像作為障礙物。
-    -   `mask_dir`: 存放 `.png` 遮罩檔案的目錄。腳本會遍歷此目錄下的所有 PNG 檔案來進行批量模擬。
+- `simulation`:
+  - `name`: 模擬任務的名稱，輸出的檔案會儲存在 `output/<name>` 目錄下。
+  - `nu`: 流體的黏滯係數，影響流場的雷諾數和穩定性。
+  - `save_npy`: `true` 表示儲存 `.npy` 陣列數據。
+  - `save_png`: `true` 表示儲存預覽圖像。
+  - `save_step`: 每隔多少步儲存一次數據。
+- `boundaries`:
+  - 設定流場的邊界條件，如入口風速。
+- `obstacle`:
+  - `use_mask`: `true` 表示使用 PNG 圖像作為障礙物。
+  - `mask_dir`: 存放 `.png` 遮罩檔案的目錄。腳本會遍歷此目錄下的所有 PNG 檔案來進行批量模擬。
 
 在執行模擬前，請務必檢查並修改 `config.yaml` 以符合您的研究需求。
 
 ## 專案結構 (Project Structure)
 
--   `main.py`: 標準 2 通道數據生成的入口腳本。
--   `engine.py`: 標準模式的核心模擬引擎。
--   `utils.py`: 標準模式的輔助工具函數。
+- `main.py`: 標準 2 通道數據生成的入口腳本。
+- `engine.py`: 標準模式的核心模擬引擎。
+- `utils.py`: 標準模式的輔助工具函數。
 
--   `main_multichannel.py`: **(建議使用)** 4 通道數據生成的入口腳本。
--   `engine_multichannel.py`: 多通道模式的核心模擬引擎，包含計算密度和渦度的邏輯。
--   `utils_multichannel.py`: 多通道模式的輔助工具函數。
+- `main_multichannel.py`: **(建議使用)** 4 通道數據生成的入口腳本。
+- `engine_multichannel.py`: 多通道模式的核心模擬引擎，包含計算密度和渦度的邏輯。
+- `utils_multichannel.py`: 多通道模式的輔助工具函數。
 
--   `config.yaml`: **(重要)** 全域配置文件。
--   `solver.py`: LBM 演算法的核心求解器，被 `engine` 所調用。
--   `cases/`: 存放幾何定義檔案，例如 `.stl` 或 `.txt`。
--   `output/masks/`: 預設存放用於生成模擬的 `.png` 遮罩圖。
--   `output/Building_Wind_Sim_multichannel/`: 預設的模擬結果輸出目錄。
--   `my_docs/`: 包含專案的說明文件和開發筆記。
+- `config.yaml`: **(重要)** 全域配置文件。
+- `solver.py`: LBM 演算法的核心求解器，被 `engine` 所調用。
+- `cases/`: 存放幾何定義檔案，例如 `.stl` 或 `.txt`。
+- `output/masks/`: 預設存放用於生成模擬的 `.png` 遮罩圖。
+- `output/Building_Wind_Sim_multichannel/`: 預設的模擬結果輸出目錄。
+- `my_docs/`: 包含專案的說明文件和開發筆記。
 
 ## 輸出數據格式 (Output Data Format)
 
--   當 `save_npy` 設為 `true` 時，腳本會生成 `.npy` 檔案。
--   使用 `main_multichannel.py` 時，每個 `.npy` 檔案的數據形狀為 `(nx, ny, 4)`，其中 `nx` 和 `ny` 是網格尺寸，4 個通道分別代表：
-    1.  **Vx**: X 方向速度
-    2.  **Vy**: Y 方向速度
-    3.  **Rho**: 流體密度
-    4.  **Vorticity**: 渦度
+- 當 `save_npy` 設為 `true` 時，腳本會生成 `.npy` 檔案。
+- 使用 `main_multichannel.py` 時，每個 `.npy` 檔案的數據形狀為 `(nx, ny, 4)`，其中 `nx` 和 `ny` 是網格尺寸，4 個通道分別代表：
+  1.  **Vx**: X 方向速度
+  2.  **Vy**: Y 方向速度
+  3.  **Rho**: 流體密度
+  4.  **Vorticity**: 渦度

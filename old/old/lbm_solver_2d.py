@@ -11,32 +11,37 @@ import taichi.math as tm
 
 ti.init(arch=ti.gpu)
 
+
 @ti.data_oriented
 class lbm_solver:
     def __init__(
         self,
-        name, # name of the flow case
+        name,  # name of the flow case
         nx,  # domain size
         ny,
-        niu,  # viscosity of fluid
+        nu,  # viscosity of fluid
         bc_type,  # [left,top,right,bottom] boundary conditions: 0 -> Dirichlet ; 1 -> Neumann
         bc_value,  # if bc_type = 0, we need to specify the velocity in bc_value
         cy=0,  # whether to place a cylindrical obstacle
         cy_para=[0.0, 0.0, 0.0],  # location and radius of the cylinder
-        ):
+    ):
         self.name = name
         self.nx = nx  # by convention, dx = dy = dt = 1.0 (lattice units)
         self.ny = ny
-        self.niu = niu
-        self.tau = 3.0 * niu + 0.5
+        self.nu = nu
+        self.tau = 3.0 * nu + 0.5
         self.inv_tau = 1.0 / self.tau
         self.rho = ti.field(float, shape=(nx, ny))
         self.vel = ti.Vector.field(2, float, shape=(nx, ny))
         self.mask = ti.field(float, shape=(nx, ny))
         self.f_old = ti.Vector.field(9, float, shape=(nx, ny))
         self.f_new = ti.Vector.field(9, float, shape=(nx, ny))
-        self.w = ti.types.vector(9, float)(4, 1, 1, 1, 1, 1 / 4, 1 / 4, 1 / 4, 1 / 4) / 9.0
-        self.e = ti.types.matrix(9, 2, int)([0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1])
+        self.w = (
+            ti.types.vector(9, float)(4, 1, 1, 1, 1, 1 / 4, 1 / 4, 1 / 4, 1 / 4) / 9.0
+        )
+        self.e = ti.types.matrix(9, 2, int)(
+            [0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [-1, -1], [1, -1]
+        )
         self.bc_type = ti.field(int, 4)
         self.bc_type.from_numpy(np.array(bc_type, dtype=np.int32))
         self.bc_value = ti.Vector.field(2, float, shape=4)
@@ -58,7 +63,9 @@ class lbm_solver:
         for i, j in self.rho:
             self.f_old[i, j] = self.f_new[i, j] = self.f_eq(i, j)
             if self.cy == 1:
-                if (i - self.cy_para[0]) ** 2 + (j - self.cy_para[1]) ** 2 <= self.cy_para[2] ** 2:
+                if (i - self.cy_para[0]) ** 2 + (
+                    j - self.cy_para[1]
+                ) ** 2 <= self.cy_para[2] ** 2:
                     self.mask[i, j] = 1.0
 
     @ti.kernel
@@ -68,7 +75,9 @@ class lbm_solver:
                 ip = i - self.e[k, 0]
                 jp = j - self.e[k, 1]
                 feq = self.f_eq(ip, jp)
-                self.f_new[i, j][k] = (1 - self.inv_tau) * self.f_old[ip, jp][k] + feq[k] * self.inv_tau
+                self.f_new[i, j][k] = (1 - self.inv_tau) * self.f_old[ip, jp][k] + feq[
+                    k
+                ] * self.inv_tau
 
     @ti.kernel
     def update_macro_var(self):  # compute rho u v
@@ -78,7 +87,9 @@ class lbm_solver:
             for k in ti.static(range(9)):
                 self.f_old[i, j][k] = self.f_new[i, j][k]
                 self.rho[i, j] += self.f_new[i, j][k]
-                self.vel[i, j] += tm.vec2(self.e[k, 0], self.e[k, 1]) * self.f_new[i, j][k]
+                self.vel[i, j] += (
+                    tm.vec2(self.e[k, 0], self.e[k, 1]) * self.f_new[i, j][k]
+                )
 
             self.vel[i, j] /= self.rho[i, j]
 
@@ -127,7 +138,9 @@ class lbm_solver:
                 self.vel[ibc, jbc] = self.vel[inb, jnb]
 
         self.rho[ibc, jbc] = self.rho[inb, jnb]
-        self.f_old[ibc, jbc] = self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
+        self.f_old[ibc, jbc] = (
+            self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
+        )
 
     def solve(self):
         gui = ti.GUI(self.name, (self.nx, 2 * self.ny))
@@ -152,16 +165,21 @@ class lbm_solver:
                 (0.176, 0.976, 0.529),
                 (0, 1, 1),
             ]
-            my_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("my_cmap", colors)
-            vor_img = cm.ScalarMappable(norm=matplotlib.colors.Normalize(vmin=-0.02, vmax=0.02), cmap=my_cmap).to_rgba(vor)
+            my_cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+                "my_cmap", colors
+            )
+            vor_img = cm.ScalarMappable(
+                norm=matplotlib.colors.Normalize(vmin=-0.02, vmax=0.02), cmap=my_cmap
+            ).to_rgba(vor)
             vel_img = cm.plasma(vel_mag / 0.15)
             img = np.concatenate((vor_img, vel_img), axis=1)
             gui.set_image(img)
             gui.show()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     flow_case = 0 if len(sys.argv) < 2 else int(sys.argv[1])
-    if (flow_case == 0):  # von Karman vortex street: Re = U*D/niu = 200
+    if flow_case == 0:  # von Karman vortex street: Re = U*D/nu = 200
         lbm = lbm_solver(
             "Karman Vortex Street",
             801,
@@ -170,16 +188,20 @@ if __name__ == '__main__':
             [0, 0, 1, 0],
             [[0.1, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
             1,
-            [160.0, 100.0, 20.0])
+            [160.0, 100.0, 20.0],
+        )
         lbm.solve()
-    elif (flow_case == 1):  # lid-driven cavity flow: Re = U*L/niu = 1000
+    elif flow_case == 1:  # lid-driven cavity flow: Re = U*L/nu = 1000
         lbm = lbm_solver(
             "Lid-driven Cavity Flow",
             256,
             256,
             0.0255,
             [0, 0, 0, 0],
-            [[0.0, 0.0], [0.1, 0.0], [0.0, 0.0], [0.0, 0.0]])
+            [[0.0, 0.0], [0.1, 0.0], [0.0, 0.0], [0.0, 0.0]],
+        )
         lbm.solve()
     else:
-        print("Invalid flow case ! Please choose from 0 (Karman Vortex Street) and 1 (Lid-driven Cavity Flow).")
+        print(
+            "Invalid flow case ! Please choose from 0 (Karman Vortex Street) and 1 (Lid-driven Cavity Flow)."
+        )

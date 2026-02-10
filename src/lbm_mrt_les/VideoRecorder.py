@@ -45,7 +45,7 @@ class VideoRecorder:
         try:
             self.process = subprocess.Popen(command, stdin=subprocess.PIPE)
             self.is_recording = True
-            print(f"--- [Video] Recording started: {self.filename} ---")
+            print(f"[Video] Recording started: {self.filename}")
         except FileNotFoundError:
             print("--- [Error] FFMPEG not found. ---")
 
@@ -70,4 +70,4 @@ class VideoRecorder:
                 pass
             self.is_recording = False
             self.process = None
-            print(f"--- [Video] Saved. ---")
+            print(f"[Video] Saved.")

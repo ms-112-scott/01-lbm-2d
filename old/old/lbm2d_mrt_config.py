@@ -30,14 +30,14 @@ class lbm_solver:
         self.name = sim_cfg["name"]
         self.nx = sim_cfg["nx"]
         self.ny = sim_cfg["ny"]
-        self.niu = sim_cfg["niu"]
+        self.nu = sim_cfg["nu"]
         self.steps_per_frame = sim_cfg.get("steps_per_frame", 10)
 
         self.bc_type_list = bc_cfg["type"]
         self.bc_value_list = bc_cfg["value"]
 
         # --- 物理參數 ---
-        self.tau = 3.0 * self.niu + 0.5
+        self.tau = 3.0 * self.nu + 0.5
         self.inv_tau = 1.0 / self.tau
 
         # --- Taichi 場定義 ---
@@ -259,7 +259,7 @@ class lbm_solver:
             name = "Channel Height"
 
         # 呼叫 utils 函數
-        utils.print_reynolds_info(u_char, l_char, self.niu, name)
+        utils.print_reynolds_info(u_char, l_char, self.nu, name)
 
     # ## --- 主程式與視覺化 --- ##
     def solve(self):

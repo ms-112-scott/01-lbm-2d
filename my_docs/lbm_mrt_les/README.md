@@ -37,7 +37,7 @@
 
 ### 3.2 配置系統 (`config.yaml`)
 
-- **Simulation**: 控制 `nx`, `ny` (解析度), `niu` (黏滯性), `smagorinsky_constant` (LES 強度)。
+- **Simulation**: 控制 `nx`, `ny` (解析度), `nu` (黏滯性), `smagorinsky_constant` (LES 強度)。
 - **Boundaries**: 定義四個邊界的類型 (Inlet/Outlet/Wall) 與數值。
 - **Mask**: 支援 `room` (雙房間) 與 `cylinder` (圓柱) 兩種模式。`room` 模式在 `utils.py` 中實作了座標旋轉功能，可模擬不同風向角。
 

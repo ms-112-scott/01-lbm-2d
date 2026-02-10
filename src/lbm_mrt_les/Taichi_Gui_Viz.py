@@ -11,7 +11,7 @@ from scipy.ndimage import gaussian_filter
 import cv2
 
 
-class LBMVisualizer:
+class Taichi_Gui_Viz:
     def __init__(
         self,
         width,

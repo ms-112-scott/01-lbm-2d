@@ -21,7 +21,7 @@ class lbm_solver:
         name,  # 模擬案例名稱
         nx,  # 計算域寬度 (x方向網格數)
         ny,  # 計算域高度 (y方向網格數)
-        niu,  # 流體運動黏滯係數 (Kinematic Viscosity)
+        nu,  # 流體運動黏滯係數 (Kinematic Viscosity)
         bc_type,  # 邊界條件類型 [左, 上, 右, 下]: 0 -> Dirichlet (固定速度); 1 -> Neumann (自由流出)
         bc_value,  # 邊界條件數值: 如果 bc_type = 0，這裡指定速度向量 [u, v]
         cy=0,  # 是否放置圓柱障礙物 (1: 是, 0: 否)
@@ -30,12 +30,12 @@ class lbm_solver:
         self.name = name
         self.nx = nx  # LBM 慣例: dx = dy = dt = 1.0 (格子單位)
         self.ny = ny
-        self.niu = niu
+        self.nu = nu
 
         # --- 物理參數計算 ---
         # 計算鬆弛時間 (Relaxation time) tau
-        # 公式: niu = (cs^2) * (tau - 0.5)，其中聲速 cs^2 = 1/3
-        self.tau = 3.0 * niu + 0.5
+        # 公式: nu = (cs^2) * (tau - 0.5)，其中聲速 cs^2 = 1/3
+        self.tau = 3.0 * nu + 0.5
         self.inv_tau = 1.0 / self.tau
 
         # --- Taichi 場定義 (Fields) ---
@@ -311,7 +311,7 @@ class lbm_solver:
         """主解算迴圈"""
         print(f"Starting simulation: {self.name}")
         print(
-            f"Grid: {self.nx}x{self.ny}, Viscosity: {self.niu}, Relaxation Tau: {self.tau:.4f}"
+            f"Grid: {self.nx}x{self.ny}, Viscosity: {self.nu}, Relaxation Tau: {self.tau:.4f}"
         )
 
         gui = ti.GUI(self.name, (self.nx, 2 * self.ny))
@@ -371,7 +371,7 @@ if __name__ == "__main__":
             name="Karman Vortex Street (MRT)",
             nx=801,
             ny=201,
-            niu=0.0005,  # 低黏滯性，MRT 應該能穩定運行
+            nu=0.0005,  # 低黏滯性，MRT 應該能穩定運行
             bc_type=[0, 0, 1, 0],  # 左入, 上壁, 右出, 下壁
             bc_value=[[0.05, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
             cy=1,
@@ -385,7 +385,7 @@ if __name__ == "__main__":
             name="Lid-driven Cavity (MRT)",
             nx=256,
             ny=256,
-            niu=0.01,
+            nu=0.01,
             bc_type=[0, 0, 0, 0],
             bc_value=[[0.0, 0.0], [0.1, 0.0], [0.0, 0.0], [0.0, 0.0]],  # 僅上方有速度
             cy=0,

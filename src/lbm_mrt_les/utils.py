@@ -52,131 +52,19 @@ def plot_mask(mask):
     plt.show()
 
 
-def _create_cylinder_mask(nx, ny, cx, cy, r):
-    """產生圓柱障礙物遮罩 (Mask)"""
-    # 建立網格座標矩陣
-    y, x = np.meshgrid(np.arange(ny), np.arange(nx))
-    # 計算每個點到圓心的距離平方
-    dist_sq = (x - cx) ** 2 + (y - cy) ** 2
-    # 產生 Mask (圓內為 1, 圓外為 0)
-    mask = np.where(dist_sq <= r**2, 1.0, 0.0)
-    return mask
-
-
-def _create_rect_mask(nx, ny, cx, cy, r):
-    """
-    產生矩形障礙物遮罩 (Mask)
-    x0, y0: 矩形左上角 (或起始點) 座標
-    w, h: 矩形的寬度與高度
-    """
-    y, x = np.meshgrid(np.arange(ny), np.arange(nx))
-    # 判斷點是否在矩形範圍內： x0 <= x < x0+w 且 y0 <= y < y0+h
-    mask = np.where(
-        (x >= cx - r / 2) & (x < cx + r / 2) & (y >= cy - r / 2) & (y < cy + r / 2),
-        1.0,
-        0.0,
-    )
-    return mask
-
-
-def _create_two_rooms_mask(nx, ny, params):
-    mask = np.zeros((nx, ny))
-
-    # --- 1. 原始參數設定 (保持不變) ---
-    shift = params.get("shift_left", 50)
-    angle = params.get("angle_deg", 20)
-    w = params.get("w", 6)
-    d_half = params.get("d_half", 8)
-    margin_lr = params.get("margin_lr", 350)
-    margin_td = params.get("margin_td", 100)
-
-    # 原始邊距計算
-    x_start = margin_lr - shift
-    x_end = (nx - margin_lr) - shift
-    y_start = margin_td
-    y_end = ny - margin_td
-
-    room_width = x_end - x_start
-    x_mid = x_start + int(room_width / 3)
-    y_mid = ny // 2
-
-    # --- 2. 旋轉參數設定 (新增) ---
-    # 將角度轉為弧度
-    theta = np.radians(angle)
-    cos_t = np.cos(theta)
-    sin_t = np.sin(theta)
-
-    # 設定旋轉中心 (Pivot Point)
-    # 建議設在「房間的中心」，這樣旋轉時房間才不會跑出畫面
-    cx = (x_start + x_end) / 2
-    cy = (y_start + y_end) / 2
-
-    # --- 3. 迴圈檢查 (加入座標旋轉) ---
-    for i in range(nx):
-        for j in range(ny):
-
-            # [核心修改]: 座標逆向旋轉
-            # 我們要檢查畫布上的點 (i, j)，在旋轉前的原始空間是對應到哪裡
-            dx = i - cx
-            dy = j - cy
-
-            # 旋轉公式 (Inverse Rotation):
-            # 如果要把物體逆時針轉 20 度，等於座標軸順時針轉 20 度
-            # x' = dx * cos + dy * sin
-            # y' = -dx * sin + dy * cos
-            local_x = dx * cos_t + dy * sin_t + cx
-            local_y = -dx * sin_t + dy * cos_t + cy
-
-            # --- 接下來的邏輯完全不變，只是把 i, j 換成 local_x, local_y ---
-
-            # 1. 定義牆壁位置 (使用 local 座標)
-            is_left_wall = x_start <= local_x < x_start + w
-            is_right_wall = x_end - w <= local_x < x_end
-
-            # 中牆位置
-            is_mid_wall = x_mid - w // 2 <= local_x < x_mid + w // 2
-
-            is_top_wall = y_end - w <= local_y < y_end
-            is_bottom_wall = y_start <= local_y < y_start + w
-
-            # 2. 定義開口位置
-            is_opening_zone = y_mid - d_half <= local_y < y_mid + d_half
-
-            # 用來限制左右牆與中牆的高度範圍
-            in_y_range = y_start <= local_y < y_end
-            # 用來限制上下牆的寬度範圍
-            in_x_range = x_start <= local_x < x_end
-
-            # 3. 繪製邏輯
-            # 上下牆
-            if (is_top_wall or is_bottom_wall) and in_x_range:
-                mask[i, j] = 1.0
-
-            # 垂直牆 (左、右、中) + 避開開口
-            if (
-                (is_left_wall or is_right_wall or is_mid_wall)
-                and (not is_opening_zone)
-                and in_y_range
-            ):
-                mask[i, j] = 1.0
-
-    return mask
-
-
-def _create_from_png(nx, ny, params):
+def _create_from_png(nx, ny, config, png_path):
     """
     從 PNG 讀取 Mask
     """
-    path = params.get("path")
 
-    if not path or not os.path.exists(path):
-        raise FileNotFoundError(f"[Error] Mask file not found: {path}")
+    if not png_path or not os.path.exists(png_path):
+        raise FileNotFoundError(f"[Error] Mask file not found: {png_path}")
 
     # 1. 以灰階模式讀取
-    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    img = cv2.imread(png_path, cv2.IMREAD_GRAYSCALE)
 
     if img is None:
-        raise ValueError(f"[Error] Failed to load image: {path}")
+        raise ValueError(f"[Error] Failed to load image: {png_path}")
 
     # 2. 強制縮放到模擬網格大小 (nx, ny)
     # cv2.resize 接受 (width, height) -> (nx, ny)
@@ -187,7 +75,7 @@ def _create_from_png(nx, ny, params):
 
     # 3. 二值化轉換
     threshold = 127
-    inverse = params.get("inverse", False)
+    inverse = config["mask"]["invert"]
 
     if inverse:
         mask = img > threshold
@@ -203,35 +91,16 @@ def _create_from_png(nx, ny, params):
     return mask.astype(bool)
 
 
-def create_mask(config):
-    mask_cfg = config.get("mask", {})
+def create_mask(config, png_path):
+    mask_cfg = config["mask"]
     mask = None
     nx = config["simulation"]["nx"]
     ny = config["simulation"]["ny"]
 
-    if mask_cfg.get("enable"):
-        m_type = mask_cfg["type"]
-        print(f"Generating Mask: {m_type}")
+    if config["mask"]["enable"]:
 
-        if m_type == "cylinder":
-            p = mask_cfg["params"]
-            mask = _create_cylinder_mask(nx, ny, p["cx"], p["cy"], p["r"])
-
-        elif m_type == "rect":
-            p = mask_cfg["params"]
-            mask = _create_rect_mask(nx, ny, p["cx"], p["cy"], p["r"])
-
-        elif m_type == "room":
-            p = mask_cfg["params"]
-            mask = _create_two_rooms_mask(nx, ny, p)
-
-        # --- 新增 PNG 讀取支援 ---
-        elif m_type == "png":
-            p = mask_cfg["params"]
-            mask = _create_from_png(nx, ny, p)
-            print(
-                f"mask shape after loading: {mask.shape}, unique values: {np.unique(mask)}"
-            )
+        if config["mask"]["type"] == "png":
+            mask = _create_from_png(nx, ny, config, png_path=png_path)
 
     # 如果沒有 mask 生成 (或 type 不對)，建立一個全 False (全流體) 的空 mask
     if mask is None:
@@ -475,15 +344,15 @@ def get_zone_config(config):
     """
     nx = config["simulation"]["nx"]
     ny = config["simulation"]["ny"]
-    zone_config = config["display"].get("zone", {})
+    zone_config = config["domain_zones"]
 
     # 阻尼層配置
-    sponge_y = zone_config.get("sponge_y", 40)  # 上下阻尼厚度
-    sponge_x = zone_config.get("sponge_x", 200)  # 左右阻尼厚度
+    sponge_y = zone_config["sponge_y"]  # 上下阻尼厚度
+    sponge_x = zone_config["sponge_x"]  # 左右阻尼厚度
 
     # 安全區 (ROI) 配置：切除阻尼層 + 額外緩衝
-    buffer = zone_config.get("buffer", 50)
-    inlet_buffer = zone_config.get("inlet_buffer", 100)
+    buffer = zone_config["buffer"]
+    inlet_buffer = zone_config["inlet_buffer"]
 
     roi_x_start = inlet_buffer
     roi_x_end = nx - sponge_x - buffer

@@ -7,8 +7,8 @@ simulation:
   # U_max = 0.05
   # U_mean = 0.03333
   # Re = 100
-  # niu = (0.03333 * 73) / 100 = 0.02433
-  niu: 0.02433
+  # nu = (0.03333 * 73) / 100 = 0.02433
+  nu: 0.02433
 
   smagorinsky_constant: 0.0 # Re=100 不需要 LES，關掉以排除干擾
   ghost_moments_s: 1.0 # 標準 LBM
