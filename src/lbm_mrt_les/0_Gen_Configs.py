@@ -39,8 +39,8 @@ def get_base_config(re_value, nu_value, l_char, mask_path, filename_stem):
             "ny": 1024,
             "nu": float(f"{nu_value:.6f}"),
             "characteristic_length": float(l_char),
-            "compute_step_size": 100,
-            "max_steps": 500000,
+            "compute_step_size": 100,  # 預設 會覆蓋
+            "max_steps": 1000000,
             "warmup_steps": 2000,
             "smagorinsky_constant": 0.2,
             "ghost_moments_s": 1.05,
@@ -48,21 +48,21 @@ def get_base_config(re_value, nu_value, l_char, mask_path, filename_stem):
         "outputs": {
             "enable_profiling": False,
             "gui": {
-                "enable": False,  # 批量跑通常關閉 GUI
-                "interval_steps": 100,
+                "enable": True,  # 批量跑通常關閉 GUI
+                "interval_steps": 100,  # 預設 會覆蓋
                 "max_size": 1024,
                 "show_zone_overlay": True,
                 "gaussian_sigma": 1.0,
             },
             "video": {
-                "enable": False,
-                "interval_steps": 500,
+                "enable": True,
+                "interval_steps": 500,  # 預設 會覆蓋
                 "fps": 30,
                 "filename": f"video_{sim_name}.mp4",
             },
             "dataset": {
                 "enable": True,
-                "interval_steps": 100,
+                "interval_steps": 100,  # 預設 會覆蓋
                 "folder": f"output/Hyper/{sim_name}_data/",
                 "compression": "lzf",
                 "save_resolution": 512,
@@ -147,7 +147,8 @@ def main():
         # 更新 Interval
         config_data["outputs"]["dataset"]["interval_steps"] = target_interval
         config_data["outputs"]["gui"]["interval_steps"] = target_interval
-        config_data["outputs"]["video"]["interval_steps"] = target_interval * 5
+        config_data["outputs"]["video"]["interval_steps"] = target_interval
+        config_data["simulation"]["compute_step_size"] = target_interval
 
         # --- 存檔 ---
         config_filename = f"cfg_{filename_stem}_Re{re_val}.yaml"
