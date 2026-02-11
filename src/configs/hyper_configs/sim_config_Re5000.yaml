@@ -6,8 +6,8 @@ outputs:
   gui: {enable: false, interval_steps: 100, max_size: 1024, show_zone_overlay: true,
     gaussian_sigma: 1.0}
   video: {enable: false, interval_steps: 500, fps: 30, filename: video_Re5000.mp4}
-  dataset: {enable: true, interval_steps: 100, folder: output/Re5000_data/, compression: lzf,
-    save_resolution: 512}
+  dataset: {enable: true, interval_steps: 100, folder: output/Hyper/Re5000_data/,
+    compression: lzf, save_resolution: 512}
 boundary_condition:
   type: [0, 2, 1, 2]
   value:

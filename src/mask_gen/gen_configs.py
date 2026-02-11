@@ -47,7 +47,7 @@ def get_base_config(re_value, nu_value):
             "dataset": {
                 "enable": True,
                 "interval_steps": 100,
-                "folder": f"output/Re{re_value}_data/",
+                "folder": f"output/Hyper/Re{re_value}_data/",
                 "compression": "lzf",
                 "save_resolution": 512,
             },

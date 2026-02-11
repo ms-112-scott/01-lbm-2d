@@ -27,7 +27,7 @@ outputs:
     {
       enable: true,
       interval_steps: 100,
-      folder: output/Re1000_data/,
+      folder: output/Hyper/Re1000_data/,
       compression: lzf,
       save_resolution: 512,
     }
