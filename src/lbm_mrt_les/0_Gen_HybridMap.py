@@ -70,11 +70,7 @@ class HybridMapGenerator:
     # ==========================================
 
     def _get_random_rotated_rect(self, bounds, size_cfg, angle_max):
-        """
-        生成隨機旋轉矩形的頂點
-        bounds: {'min_x', 'max_x', 'min_y', 'max_y'}
-        """
-        # 1. 計算安全邊距 (基於對角線)
+        # ... (保持原樣) ...
         max_diag = np.sqrt(size_cfg["max_w"] ** 2 + size_cfg["max_h"] ** 2)
         margin = int(max_diag / 2) + 2
 
@@ -83,76 +79,61 @@ class HybridMapGenerator:
         safe_y_min = bounds["min_y"] + margin
         safe_y_max = bounds["max_y"] - margin
 
-        # 防止邊界無效 (若區間太小，至少保證不報錯，雖然可能生不出東西)
         if safe_x_max <= safe_x_min:
             safe_x_max = safe_x_min + 1
         if safe_y_max <= safe_y_min:
             safe_y_max = safe_y_min + 1
 
-        # 2. 隨機生成參數
         cx = np.random.randint(safe_x_min, safe_x_max)
         cy = np.random.randint(safe_y_min, safe_y_max)
         w = np.random.randint(size_cfg["min_w"], size_cfg["max_w"])
         h = np.random.randint(size_cfg["min_h"], size_cfg["max_h"])
         angle = np.random.uniform(-angle_max, angle_max)
 
-        # 3. 獲取頂點 (cv2.boxPoints 返回 float32，需轉 int)
+        # [關鍵] 回傳 w 以便統計
         rect_def = ((cx, cy), (w, h), angle)
         box = cv2.boxPoints(rect_def)
-        return np.int64(box)
+        return np.int64(box), w
 
     def _check_sdf_validity(self, new_box, min_dist):
-        """利用 Distance Transform 檢查新物體是否離現有障礙物太近"""
         if np.sum(self.grid) == 0:
             return True
-
-        # 輸入圖：障礙物=0, 流體=1
         inv_grid = (1 - self.grid).astype(np.uint8)
         sdf = cv2.distanceTransform(inv_grid, cv2.DIST_L2, 5)
-
         new_mask = np.zeros_like(self.grid)
         cv2.drawContours(new_mask, [new_box], 0, 1, -1)
-
         covered_sdf = sdf[new_mask == 1]
-
         if len(covered_sdf) == 0:
             return True
         if np.min(covered_sdf) < min_dist:
             return False
-
         return True
 
     def _check_blockage_ratio(self, new_box, max_ratio):
-        """檢查垂直截面阻塞率"""
         temp_grid = self.grid.copy()
         cv2.drawContours(temp_grid, [new_box], 0, 1, -1)
-
         y_occupancy = np.max(temp_grid, axis=1)
         blocked_height = np.sum(y_occupancy)
         current_ratio = blocked_height / self.H
-
         return current_ratio <= max_ratio
 
     def _generate_step_urban_section(self):
+        """
+        生成隨機方塊並回傳 [平均寬度]
+        """
         cfg = self.config["step_urban"]
 
-        # 1. 建立固定的大階梯 (Step)
+        # 1. 建立固定的大階梯 (Step) - 這個不計入平均寬度，因為它是邊界條件
         step_x = int(self.W * cfg["step_start_ratio"])
         step_h = int(self.H * cfg["step_height_ratio"])
         step_w = int(self.W * cfg["step_width_ratio"])
         self._add_box(step_x, 0, step_w, step_h)
 
-        # 2. 定義 Urban 區域邊界 (使用 Config 中的新參數)
-        # block_start_ratio: 控制左側留白 (階梯後到第一個方塊的距離)
-        # block_end_ratio: 控制右側邊界
-
+        # 2. 定義區域
         block_start_x = int(self.W * cfg["block_start_ratio"])
         block_end_x = int(self.W * cfg["block_end_ratio"])
-
-        # 安全檢查：確保 block_start 至少在 step 之後
         step_end_x = step_x + step_w
         if block_start_x < step_end_x + 20:
-            # 如果設定太靠左，強制推到階梯後方 20px
             block_start_x = step_end_x + 20
 
         urban_bounds = {
@@ -162,50 +143,65 @@ class HybridMapGenerator:
             "max_y": self.H,
         }
 
-        # 3. 嘗試放置旋轉方塊
+        # 3. 放置方塊並統計寬度
         count = 0
         attempts = 0
         target_count = cfg["rect_count"]
         max_attempts = cfg["max_attempts"]
 
+        # [新增] 用來記錄所有成功放置的方塊寬度
+        placed_widths = []
+
         while count < target_count and attempts < max_attempts:
             attempts += 1
 
-            # 生成候選方塊
-            box_points = self._get_random_rotated_rect(
+            # 注意：_get_random_rotated_rect 現在回傳 (box, w)
+            box_points, w_val = self._get_random_rotated_rect(
                 urban_bounds, cfg["rect_size"], cfg["rotate_angle_max"]
             )
 
-            # 驗證 1: SDF 距離檢查
             if not self._check_sdf_validity(box_points, cfg["min_distance"]):
                 continue
 
-            # 驗證 2: 阻塞率檢查
             if not self._check_blockage_ratio(box_points, cfg["max_blockage_ratio"]):
                 continue
 
-            # 通過驗證，寫入 Grid
             cv2.drawContours(self.grid, [box_points], 0, 1, -1)
+
+            # [新增] 記錄寬度
+            placed_widths.append(w_val)
             count += 1
 
         print(
-            f"  [Urban] Placed {count}/{target_count} blocks in range X[{block_start_x}:{block_end_x}]"
+            f"  [Urban] Placed {count}/{target_count} blocks. Widths: {placed_widths}"
         )
+
+        # [新增] 計算並回傳平均寬度 (若是空的則回傳預設值 0)
+        if not placed_widths:
+            return 0.0
+        return np.mean(placed_widths)
 
     # ==========================================
     # Main Generation & Saving
     # ==========================================
 
     def generate(self):
+        """
+        執行生成並回傳計算出的特徵長度 (L_char)
+        """
         self.reset()
         self._generate_pinball_section()
         self._generate_tube_bank_section()
-        self._generate_step_urban_section()
+
+        # 取得 Urban 區域的平均寬度作為 L_char
+        avg_urban_width = self._generate_step_urban_section()
 
         # 邊界清理
         buffer = self.config["validation"]["boundary_buffer"]
         self.grid[:, :buffer] = 0
         self.grid[:, -buffer:] = 0
+
+        return avg_urban_width
 
     def save_map(self, filename):
         output_dir = os.path.dirname(filename)
@@ -213,10 +209,8 @@ class HybridMapGenerator:
             os.makedirs(output_dir, exist_ok=True)
 
         if self.config["output"]["invert_values"]:
-            # 輸出：1=流體(白), 0=障礙物(黑)
             output_grid = 1 - self.grid
         else:
-            # 輸出：0=流體(黑), 1=障礙物(白)
             output_grid = self.grid
 
         plt.imsave(filename, output_grid, cmap="gray", vmin=0, vmax=1)
@@ -224,9 +218,8 @@ class HybridMapGenerator:
 
 
 # ==========================================
-# Updated Configuration
+# Config (保持你的設定)
 # ==========================================
-
 HYBRID_CONFIG = {
     "domain": {"height": 1024, "width": 4096},
     "pinball": {
@@ -244,15 +237,11 @@ HYBRID_CONFIG = {
         "jitter_amount": 3,
     },
     "step_urban": {
-        # 1. 階梯設定 (BFS)
-        "step_start_ratio": 0.55,  # 階梯開始
-        "step_width_ratio": 0.05,  # 階梯厚度 -> 階梯結束於 0.60
+        "step_start_ratio": 0.55,
+        "step_width_ratio": 0.05,
         "step_height_ratio": 0.35,
-        # 2. 方塊分佈設定 (控制留白)
-        # 這裡設定 0.70，代表從 0.60 到 0.70 是空的 (大約 400px 的留白)
         "block_start_ratio": 0.70,
         "block_end_ratio": 0.85,
-        # 3. 方塊生成參數
         "rect_count": 8,
         "max_attempts": 200,
         "min_distance": 64,
@@ -276,7 +265,6 @@ HYBRID_CONFIG = {
 if __name__ == "__main__":
     generator = HybridMapGenerator(HYBRID_CONFIG)
 
-    # 存下 Config 備份
     os.makedirs(HYBRID_CONFIG["output"]["save_dir"], exist_ok=True)
     with open(
         os.path.join(HYBRID_CONFIG["output"]["save_dir"], "config.json"), "w"
@@ -285,9 +273,16 @@ if __name__ == "__main__":
 
     for i in range(5):
         print(f"Generating {i}...")
-        generator.generate()
+
+        # [關鍵修改] 接收 generate 回傳的特徵長度
+        l_char = generator.generate()
+
+        # [關鍵修改] 將 L_char 寫入檔名 (格式: prefix_L{整數長度}_{編號}.png)
+        # 例如: hybrid_adv_L125_0000.png
         filename = os.path.join(
             HYBRID_CONFIG["output"]["save_dir"],
-            f"{HYBRID_CONFIG['output']['prefix']}_{i:04d}.png",
+            f"{HYBRID_CONFIG['output']['prefix']}_L{int(l_char)}_{i:04d}.png",
         )
+
         generator.save_map(filename)
+        print(f" -> L_char (Avg Width): {l_char:.2f}")
