@@ -200,7 +200,10 @@ def main(config_path, png_path):
         )
 
         # [Strategy] 存檔 Metadata 到總表  補充額外資訊
-        metadata["status"] = "Success"
+        if "status" not in metadata or not metadata["status"]:
+            metadata["status"] = "Success"
+            if "reason" not in metadata:
+                metadata["reason"] = "Completed successfully (Default)"
         metadata["final_steps"] = max_steps
         metadata["config_used"] = config_path
 

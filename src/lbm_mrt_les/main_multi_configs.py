@@ -18,7 +18,7 @@ def run_batch_simulation():
     parser.add_argument(
         "--config_dir",
         type=str,
-        default="src/GenMask/generated_maps_advanced",
+        default="src/configs/hyper_configs",
         help="Directory containing YAML config files",
     )
 

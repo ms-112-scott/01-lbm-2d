@@ -255,7 +255,7 @@ HYBRID_CONFIG = {
         # 3. 方塊生成參數
         "rect_count": 8,
         "max_attempts": 200,
-        "min_distance": 20,
+        "min_distance": 64,
         "max_blockage_ratio": 1.0,
         "rotate_angle_max": 5,
         "rect_size": {

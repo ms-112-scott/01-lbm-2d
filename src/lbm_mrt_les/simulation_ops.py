@@ -3,6 +3,7 @@ import numpy as np
 import taichi as ti
 from tqdm import tqdm
 import utils
+import traceback
 
 
 def check_stability(
@@ -69,87 +70,71 @@ def check_stability(
 def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
     """
     [核心迴圈] LBM 模擬主流程
-
-    已移除 History 紀錄，專注於 HDF5 數據集生成與即時監控。
+    回傳: 包含執行狀態與物理參數的字典 (metadata)
     """
     # --- 1. 讀取設定與初始化 ---
     sim_cfg = config["simulation"]
     out_cfg = config["outputs"]
     zones = utils.get_zone_config(config)
 
-    # 運算批次 (compute_step_size)
     compute_step_size = sim_cfg["compute_step_size"]
-
-    # 取得各項輸出的間隔 (Interval)
     gui_interval = out_cfg["gui"]["interval_steps"]
     vid_interval = out_cfg["video"]["interval_steps"]
     data_interval = out_cfg["dataset"]["interval_steps"]
 
     current_steps = 0
-
-    # 進度條
     pbar = tqdm(total=max_steps, unit="step")
 
-    # [Profile] 初始化計時器
-    timings = {
-        "compute": 0.0,
-        "force": 0.0,
-        "field_fetch": 0.0,
-        "stability": 0.0,
-        "viz_proc": 0.0,
-        "gui_draw": 0.0,
-        "video_io": 0.0,
-        "moment_fetch": 0.0,
-        "hdf5_io": 0.0,
-    }
+    # [狀態追蹤] 初始化預設狀態
+    exit_status = "Success"  # Success, Failed, Aborted, Error
+    exit_reason = "Reached max_steps"  # 詳細原因
+
+    # [Profile] 初始化計時器 (略過部分詳細定義以節省篇幅)
+    timings = {"compute": 0.0, "stability": 0.0, "viz_proc": 0.0, "hdf5_io": 0.0}
 
     try:
         while current_steps < max_steps:
             t_loop_start = time.perf_counter()
 
+            # [Check 1] GUI 關閉檢查
             if gui and not gui.running:
-                print("\n[Info] GUI closed by user.")
+                exit_status = "Aborted"
+                exit_reason = "GUI closed by user"
+                print(f"\n[Info] {exit_reason}")
                 break
 
             # =========================================================
-            # 1. 核心運算 (LBM Compute)
+            # 1. 核心運算 & 2. 力計算
             # =========================================================
             t0 = time.perf_counter()
             solver.run_step(compute_step_size)
-            ti.sync()
-            current_steps += compute_step_size
-            t1 = time.perf_counter()
-            timings["compute"] = (t1 - t0) * 1000
-
-            # =========================================================
-            # 2. 數據採樣 (Force Calculation)
-            # =========================================================
-            t0 = time.perf_counter()
-            # 依然需要計算 Force 用於穩定性檢查與進度條顯示
+            # ti.sync() # 如果需要強制同步
             forces = solver.get_force()
-            t1 = time.perf_counter()
-            timings["force"] = (t1 - t0) * 1000
+            current_steps += compute_step_size
+            timings["compute"] = (time.perf_counter() - t0) * 1000
 
             # =========================================================
-            # 3. 穩定性檢查 (Stability Check)
+            # 3. 穩定性檢查 (Critical)
             # =========================================================
             t0 = time.perf_counter()
             vel_field, mask_data = solver.get_physical_fields()
             warmup = sim_cfg["warmup_steps"]
+
             is_stable, reason = check_stability(
                 forces, vel_field, current_steps, warmup_step=warmup
             )
 
-            if not is_stable and current_steps > warmup:
-                print(f"\n\033[91m[CRITICAL] {reason}\033[0m")
-                print("Aborting simulation loop early...")
+            # [Check 2] 數值發散檢查
+            if not is_stable:
+                exit_status = "Failed"
+                exit_reason = reason  # 捕捉 check_stability 回傳的錯誤訊息
+                print(f"\n\033[91m[CRITICAL] Simulation Failed: {reason}\033[0m")
                 break
 
-            t1 = time.perf_counter()
-            timings["stability"] = (t1 - t0) * 1000
+            timings["stability"] = (time.perf_counter() - t0) * 1000
 
             # 更新 CLI 進度條
-            pbar.set_postfix(Fx=f"{forces[0]:.3e}", Fy=f"{forces[1]:.3e}")
+            pbar.set_postfix(Fx=f"{forces[0]:.2e}", Fy=f"{forces[1]:.2e}")
             pbar.update(compute_step_size)
 
             # =========================================================
@@ -231,17 +216,34 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
                     print(f"  └─ [SKIP] HDF5 I/O:    0.0 ms")
 
     except KeyboardInterrupt:
-        print("\n[Info] Simulation interrupted by user.")
+        exit_status = "Aborted"
+        exit_reason = "User Interrupted (Ctrl+C)"
+        print(f"\n[Info] {exit_reason}")
 
-    pbar.close()
+    except Exception as e:
+        # [Check 3] 捕捉未預期的程式錯誤 (如 IndexOutOfBounds, VRAM OOM)
+        exit_status = "Error"
+        exit_reason = f"Runtime Error: {str(e)}"
+        print(f"\n\033[91m[ERROR] Exception occurred: {exit_reason}\033[0m")
+        traceback.print_exc()  # 印出詳細錯誤位置
 
-    # 只回傳 Metadata
+    finally:
+        pbar.close()
+
+    # --- 建構完整回傳資料 ---
     metadata = {
-        "re_val": float(solver.Re),
-        "u_max": float(np.linalg.norm(solver.u_inlet)),
+        # 1. 執行狀態 (供 Batch Runner 判讀)
+        "status": exit_status,
+        "reason": exit_reason,
+        "final_steps": current_steps,
+        "target_steps": max_steps,
+        # 2. 物理參數 (供資料分析)
+        "re_val": float(solver.Re) if hasattr(solver, "Re") else 0.0,
+        "u_max": (
+            float(np.linalg.norm(solver.u_inlet)) if hasattr(solver, "u_inlet") else 0.0
+        ),
         "D": float(config["simulation"]["characteristic_length"]),
-        "data_interval": data_interval,
-        "compute_step_size": compute_step_size,
+        "nu": float(config["simulation"]["nu"]),
     }
 
     return metadata
