@@ -584,3 +584,50 @@ def calculate_characteristic_length(mask):
     L_char = np.sum(y_projection == 0)
 
     return int(L_char)
+
+
+def calculate_simulation_time_scale(config, print_console=False):
+    """
+    計算並印出 LBM 的物理時間尺度 (Characteristic Time Units)
+    公式: Steps per Time Unit = L_char / U_lb
+    """
+    try:
+        # 1. 抓取特徵長度 L (通常是障礙物直徑或流場高度)
+        l_char = config["simulation"].get("characteristic_length", 0)
+
+        # 2. 抓取入口速度 U (從邊界條件中解析)
+        # 假設 Inlet 設在 boundary_condition 的第一個位置
+        # 結構: boundary_condition -> value -> [ [u_x, u_y], ... ]
+        u_lb = config["boundary_condition"]["value"][0][0]
+
+        if u_lb == 0 or l_char == 0:
+            print(
+                "[TimeScale] Warning: U_lb or L_char is 0. Cannot calculate time scale."
+            )
+            return
+
+        # 3. 計算轉換率
+        # 這就是「物理模擬中的 1 秒」對應的 iters
+        steps_per_time_unit = l_char / u_lb
+
+        # 4. 取得總模擬步數
+        max_steps = config["simulation"]["max_steps"]
+        total_physical_time = max_steps / steps_per_time_unit
+        if print_console:
+            print(f"--- [Physics Time Scale] ---")
+            print(f"   L_char (Length) : {l_char} cells")
+            print(f"   U_lb   (Velocity): {u_lb} lattice-speed")
+            print(f"   -----------------------------------------")
+            print(
+                f"   \033[96m1 Physical Second (CTU) = {steps_per_time_unit:.1f} iters\033[0m"
+            )
+            print(
+                f"   Total Simulation Time   = {total_physical_time:.2f} Physical Seconds"
+            )
+            print(f"   -----------------------------------------")
+
+        return steps_per_time_unit
+
+    except Exception as e:
+        print(f"[TimeScale] Error parsing config: {e}")
+        return 0
