@@ -35,8 +35,8 @@ def get_base_config(re_value, nu_value, l_char, mask_path, filename_stem):
     return {
         "simulation": {
             "name": sim_name,
-            "nx": 4096,
-            "ny": 1024,
+            "nx": 4224,
+            "ny": 1280,
             "nu": float(f"{nu_value:.6f}"),
             "characteristic_length": float(l_char),
             "compute_step_size": 100,  # 預設 會覆蓋
@@ -86,7 +86,7 @@ def get_base_config(re_value, nu_value, l_char, mask_path, filename_stem):
         "domain_zones": {
             "sponge_y": 64,
             "sponge_x": 128,
-            "buffer": 64,
+            "buffer": 192,
             "inlet_buffer": 128,
         },
     }

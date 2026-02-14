@@ -223,7 +223,7 @@ class HybridMapGenerator:
 # Config (保持你的設定)
 # ==========================================
 HYBRID_CONFIG = {
-    "domain": {"height": 1024, "width": 4096},
+    "domain": {"height": 1280, "width": 4224},
     "pinball": {
         "center_x_ratio": 0.12,
         "center_y_ratio": 0.5,
@@ -256,7 +256,7 @@ HYBRID_CONFIG = {
             "max_h": 200,
         },
     },
-    "validation": {"boundary_buffer": 10},
+    "validation": {"boundary_buffer": 138},
     "output": {
         "save_dir": "src/generators/hybrid_maps",
         "prefix": "hybrid_adv",
