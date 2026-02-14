@@ -6,7 +6,7 @@ import yaml  # 需要 pip install pyyaml
 import gc  # Garbage Collection
 import traceback
 
-from main import main
+from src.lbm_mrt_les.run_one_case import main
 
 
 def run_batch_simulation():

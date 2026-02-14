@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import utils
 import simulation_ops as ops
 from LBMCaseWriter import AsyncLBMCaseWriter
-from LBM2D_MRT_LES import LBM2D_MRT_LES
+from LBM_solver import LBM2D_MRT_LES
 from Taichi_Gui_Viz import Taichi_Gui_Viz
 from VideoRecorder import VideoRecorder
 
