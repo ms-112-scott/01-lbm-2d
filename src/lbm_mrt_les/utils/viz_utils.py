@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def plot_mask(mask):
     """視覺化 Mask"""
     plt.figure(figsize=(10, 5))
@@ -10,6 +11,7 @@ def plot_mask(mask):
     plt.title("Two Rooms Layout (White=Wall, Black=Air)")
     plt.colorbar()
     plt.show()
+
 
 def plot_verification_results(out_dir, steps, cd, cl, re_num, u_mean, D):
     """
@@ -85,10 +87,8 @@ def plot_verification_results(out_dir, steps, cd, cl, re_num, u_mean, D):
             linewidth=1.5,
         )
         info_text = (
-            f"Analysis Result:
-"
-            f"Max $C_L$: {cl_max:.4f} (Ref: ~1.0)
-"
+            f"Analysis Result:"
+            f"Max $C_L$: {cl_max:.4f} (Ref: ~1.0)"
             f"Strouhal (St): {st_num:.4f} (Ref: 0.29~0.30)"
         )
         # 在圖表上標註數據
@@ -113,12 +113,12 @@ def plot_verification_results(out_dir, steps, cd, cl, re_num, u_mean, D):
     plt.savefig(save_path, dpi=150)
     plt.close()
 
-    print(f"
-[Validation] Plot saved to: {save_path}")
+    print(f"[Validation] Plot saved to: {save_path}")
     print(f"[Result] Mean Cd: {cd_mean:.4f}")
     print(f"[Result] Max Cl:  {cl_max:.4f}")
     if popt is not None:
         print(f"[Result] Strouhal Number (St): {st_num:.4f}")
+
 
 def calcu_gui_size(raw_w, raw_h, max_display_size=None):
     """
@@ -142,6 +142,7 @@ def calcu_gui_size(raw_w, raw_h, max_display_size=None):
 
     return target_w, target_h * 2
 
+
 def apply_resize(img, target_w, target_h):
     """
     執行影像縮放
@@ -153,6 +154,7 @@ def apply_resize(img, target_w, target_h):
         return img
 
     return cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+
 
 def draw_zone_overlay(gui, zones, split_ratio=0.5, y_offset=0.0):
     """

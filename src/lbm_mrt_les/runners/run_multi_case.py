@@ -6,6 +6,7 @@ import yaml  # 需要 pip install pyyaml
 import gc  # Garbage Collection
 import traceback
 
+
 from .run_one_case import main
 
 
@@ -26,7 +27,7 @@ def run_batch_simulation():
     parser.add_argument(
         "--mask_dir",
         type=str,
-        default="src/generators/rect_masks",
+        default="src/generators/hybrid_maps",
         help="Directory containing PNG mask files",
     )
 

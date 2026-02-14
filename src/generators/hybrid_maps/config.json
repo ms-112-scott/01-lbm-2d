@@ -1,0 +1,46 @@
+{
+    "domain": {
+        "height": 1024,
+        "width": 4096
+    },
+    "pinball": {
+        "center_x_ratio": 0.12,
+        "center_y_ratio": 0.5,
+        "radius_ratio": 0.05,
+        "spacing_factor": 2.5
+    },
+    "tube_bank": {
+        "start_x_ratio": 0.3,
+        "end_x_ratio": 0.55,
+        "radius_ratio": 0.03,
+        "num_rows": 5,
+        "num_cols": 6,
+        "jitter_amount": 3
+    },
+    "step_urban": {
+        "step_start_ratio": 0.55,
+        "step_width_ratio": 0.05,
+        "step_height_ratio": 0.35,
+        "block_start_ratio": 0.7,
+        "block_end_ratio": 0.85,
+        "rect_count": 8,
+        "max_attempts": 200,
+        "min_distance": 64,
+        "max_blockage_ratio": 1.0,
+        "rotate_angle_max": 5,
+        "rect_size": {
+            "min_w": 50,
+            "max_w": 200,
+            "min_h": 50,
+            "max_h": 200
+        }
+    },
+    "validation": {
+        "boundary_buffer": 10
+    },
+    "output": {
+        "save_dir": "src/generators/hybrid_maps",
+        "prefix": "hybrid_adv",
+        "invert_values": true
+    }
+}
