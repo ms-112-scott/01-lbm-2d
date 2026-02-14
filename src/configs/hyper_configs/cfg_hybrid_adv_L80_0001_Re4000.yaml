@@ -1,0 +1,19 @@
+simulation: {name: hybrid_adv_L80_0001_Re4000, nx: 4096, ny: 1024, nu: 0.001, characteristic_length: 80.0,
+  compute_step_size: 64, max_steps: 1000000, warmup_steps: 2000, smagorinsky_constant: 0.2,
+  ghost_moments_s: 1.05}
+outputs:
+  enable_profiling: false
+  gui: {enable: true, interval_steps: 64, max_size: 1024, show_zone_overlay: true,
+    gaussian_sigma: 1.0}
+  video: {enable: true, interval_steps: 64, fps: 30, filename: video_hybrid_adv_L80_0001_Re4000.mp4}
+  dataset: {enable: true, interval_steps: 64, folder: output/Hyper/hybrid_adv_L80_0001_Re4000_data/,
+    compression: lzf, save_resolution: 512}
+boundary_condition:
+  type: [0, 2, 1, 2]
+  value:
+  - [0.05, 0.0]
+  - [0.0, 0.0]
+  - [0.0, 0.0]
+  - [0.0, 0.0]
+mask: {enable: true, type: png, invert: false, path: src/generators/hybrid_maps\hybrid_adv_L80_0001.png}
+domain_zones: {sponge_y: 64, sponge_x: 128, buffer: 64, inlet_buffer: 128}

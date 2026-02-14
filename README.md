@@ -49,6 +49,8 @@ git clone https://github.com/ms-112-scott/01-lbm-2d.git
 cd 01-lbm-2d
 
 # Install dependencies (Taichi, H5py, PyYAML, OpenCV)
+python3.13 -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 
 ```

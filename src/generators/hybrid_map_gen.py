@@ -200,6 +200,8 @@ class HybridMapGenerator:
         buffer = self.config["validation"]["boundary_buffer"]
         self.grid[:, :buffer] = 0
         self.grid[:, -buffer:] = 0
+        base = 20
+        avg_urban_width = int(avg_urban_width / base) * base
 
         return avg_urban_width
 
