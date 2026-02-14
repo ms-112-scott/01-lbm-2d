@@ -63,7 +63,7 @@ def get_base_config(re_value, nu_value, l_char, mask_path, filename_stem):
             "dataset": {
                 "enable": True,
                 "interval_steps": 100,  # 預設 會覆蓋
-                "folder": f"output/Hyper/{sim_name}_data/",
+                "folder": f"output/Hyper/",
                 "compression": "lzf",
                 "save_resolution": 512,
             },

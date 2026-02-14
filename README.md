@@ -4,9 +4,21 @@ A high-performance, GPU-accelerated **Multiple Relaxation Time (MRT) Lattice Bol
 
 ---
 
-## 🔬 Academic Context & Attribution
+## Academic Context & Attribution
 
-This repository is a core component of a research framework for **AI-driven architectural wind environment simulation**. It is a customized and extended fork of the [LBM_Taichi](https://github.com/hietwll/LBM_Taichi.git) project.
+This repository serves as a core component of the research framework for **AI-driven architectural wind environment simulation**.
+
+It is developed as a customized and extended fork of the [LBM_Taichi](https://github.com/hietwll/LBM_Taichi.git) project, originally authored by _hietwll_. Modifications focus on integrating architectural boundary conditions and optimizing data flow for deep learning applications.
+
+### Research Team
+
+**Bo-Xuan Lu (呂博軒)** _M.S. Student (112)_ Graduate Institute of Architecture, National Yang Ming Chiao Tung University (NYCU), Taiwan  
+[apc582nntscott@arch.nycu.edu.tw](mailto:apc582nntscott@arch.nycu.edu.tw)  
+ORCID: [0009-0002-5308-4810](https://orcid.org/0009-0002-5308-4810)
+
+**Assoc. Prof. June-Hao Hou (侯君昊)** _Advisor / Principal Investigator_ Graduate Institute of Architecture, National Yang Ming Chiao Tung University (NYCU), Taiwan  
+[jhou@arch.nycu.edu.tw](mailto:jhou@arch.nycu.edu.tw)  
+ORCID: [0000-0002-8362-7719](https://orcid.org/0000-0002-8362-7719)
 
 ### Related Publications
 
@@ -76,6 +88,13 @@ Execute simulations for all masks in a directory using a template configuration:
 python -m src.lbm_mrt_les.runners.run_one_case \
     --config src/configs/config_template.yaml \
     --mask_dir src/generators/rect_masks
+
+```
+
+```bash
+python -m src.lbm_mrt_les.runners.run_multi_case \
+    --config src/configs/hyper_configs \
+    --mask_dir src/generators/hyper_masks
 
 ```
 
