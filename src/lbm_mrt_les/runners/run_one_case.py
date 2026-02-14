@@ -9,14 +9,14 @@ import time
 # ---------------------------------------------------------
 # [System] Path Setup & Imports
 # ---------------------------------------------------------
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-import utils
-import simulation_ops as ops
-from LBMCaseWriter import AsyncLBMCaseWriter
-from LBM_solver import LBM2D_MRT_LES
-from Taichi_Gui_Viz import Taichi_Gui_Viz
-from VideoRecorder import VideoRecorder
+from .. import utils
+from ..engine import simulation_ops as ops
+from ..io.lbm_writer import AsyncLBMCaseWriter
+from ..engine.lbm_solver import LBM2D_MRT_LES
+from ..io.visualizer import Taichi_Gui_Viz
+from ..io.video_recorder import VideoRecorder
 
 # ---------------------------------------------------------
 # [System] Taichi Initialization
@@ -249,7 +249,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mask_dir",
         type=str,
-        default="src/GenMask/rect_masks",
+        default="src/generators/rect_masks",
         help="Directory containing PNG mask files",
     )
 

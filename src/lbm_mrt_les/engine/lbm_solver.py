@@ -4,15 +4,14 @@ from matplotlib import cm
 import taichi as ti
 import taichi.math as tm
 
-from VideoRecorder import VideoRecorder
+from ..io.video_recorder import VideoRecorder
 from scipy.ndimage import gaussian_filter
 
 
 import sys
 import os
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import utils
+from .. import utils
 
 ti.init(arch=ti.gpu)
 

@@ -13,7 +13,7 @@ U_LB = 0.05  # 入口速度
 SAVES_PER_PHYSICAL_SECOND = 25  # 目標採樣率
 
 # 路徑設定
-MASK_DIR = "src/GenMask/generated_maps_advanced"
+MASK_DIR = "src/generators/rect_masks"
 OUTPUT_DIR = "src/configs/hyper_configs"
 
 

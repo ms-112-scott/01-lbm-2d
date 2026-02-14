@@ -76,7 +76,7 @@ def calculate_temporal_average_from_video(
 # 執行核心： os.walk 遞迴處理
 # ==========================================
 if __name__ == "__main__":
-    root_dir = "src/lbm_mrt_les/output"
+    root_dir = "output"
     print(f"--- LBM Post-Processing Task Start ---")
     print(f"Scanning directory: {root_dir}\n")
 

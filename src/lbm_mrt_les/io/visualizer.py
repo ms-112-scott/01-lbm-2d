@@ -1,8 +1,7 @@
 import os
 import sys
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from utils import apply_resize
+from ..utils import apply_resize
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt

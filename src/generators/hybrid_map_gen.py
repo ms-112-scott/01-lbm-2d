@@ -256,7 +256,7 @@ HYBRID_CONFIG = {
     },
     "validation": {"boundary_buffer": 10},
     "output": {
-        "save_dir": "src/GenMask/generated_maps_advanced",
+        "save_dir": "src/generators/hybrid_maps",
         "prefix": "hybrid_adv",
         "invert_values": True,
     },

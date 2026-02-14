@@ -2,7 +2,7 @@ import time
 import numpy as np
 import taichi as ti
 from tqdm import tqdm
-import utils
+from .. import utils
 import traceback
 
 
