@@ -59,6 +59,7 @@ data/
 # ===========================
 # 你的輸出資料夾
 output/
+output_postprocess/
 results/
 data_output/
 
