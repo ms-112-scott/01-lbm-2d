@@ -1,7 +1,7 @@
 {
     "domain": {
-        "height": 1024,
-        "width": 4096
+        "height": 1280,
+        "width": 4224
     },
     "pinball": {
         "center_x_ratio": 0.12,
@@ -36,7 +36,7 @@
         }
     },
     "validation": {
-        "boundary_buffer": 10
+        "boundary_buffer": 138
     },
     "output": {
         "save_dir": "src/generators/hybrid_maps",

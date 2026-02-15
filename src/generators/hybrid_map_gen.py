@@ -273,7 +273,7 @@ if __name__ == "__main__":
     ) as f:
         json.dump(HYBRID_CONFIG, f, indent=4)
 
-    for i in range(5):
+    for i in range(2):
         print(f"Generating {i}...")
 
         # [關鍵修改] 接收 generate 回傳的特徵長度
