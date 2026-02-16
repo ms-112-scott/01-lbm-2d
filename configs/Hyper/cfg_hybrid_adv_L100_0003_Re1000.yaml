@@ -1,5 +1,5 @@
 simulation: {nx: 4096, ny: 1024, max_steps: 1000000, warmup_steps: 2000, smagorinsky_constant: 0.2,
-  ghost_moments_s: 1.05, name: hybrid_adv_L100_0003_Re1000, nu: 0.005, characteristic_length: 100.0,
+  ghost_moments_s: 1.2, name: hybrid_adv_L100_0003_Re1000, nu: 0.005, characteristic_length: 100.0,
   compute_step_size: 80}
 outputs:
   enable_profiling: false
