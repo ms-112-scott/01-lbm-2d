@@ -19,7 +19,7 @@ def run_batch_simulation():
     parser.add_argument(
         "--config_dir",
         type=str,
-        default="src/configs/hyper_configs",
+        default="configs/Hyper",
         help="Directory containing YAML config files",
     )
 
@@ -27,7 +27,7 @@ def run_batch_simulation():
     parser.add_argument(
         "--mask_dir",
         type=str,
-        default="src/generators/hybrid_maps",
+        default="mask/Hyper",
         help="Directory containing PNG mask files",
     )
 

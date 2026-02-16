@@ -1,0 +1,73 @@
+# ==========================================
+# 1. 批次處理與路徑設定 (Batch & Paths)
+# ==========================================
+settings:
+  # 搜尋 Mask 的資料夾
+  mask_dir: "mask/Hyper"
+
+  # 輸出 Config 的資料夾
+  output_dir: "configs/Hyper"
+
+  # 輸出資料的根目錄 (對應 outputs.dataset.folder)
+  data_save_root: "outputs/simulation_data/Hyper/"
+
+physics_control:
+  # 雷諾數列表 (循環使用)
+  re_list: [1000, 2000, 3000, 4000, 100, 200, 500, 800]
+
+  # 入口速度 U_LB
+  u_lb: 0.05
+
+  # 目標採樣率 (每物理秒存幾次)
+  saves_per_physical_second: 25
+
+# ==========================================
+# 2. 基礎模擬模板 (Base Template)
+# ==========================================
+# 這裡定義所有 Case 共用的預設值，Python 腳本只會修改變動的部分
+template:
+  simulation:
+    nx: 4096
+    ny: 1024
+    # nu, characteristic_length, name 會由腳本動態填入
+    max_steps: 1000000
+    warmup_steps: 2000
+    smagorinsky_constant: 0.2
+    ghost_moments_s: 1.05
+    # compute_step_size 會由腳本根據 interval 覆蓋
+
+  outputs:
+    enable_profiling: False
+    gui:
+      enable: True
+      max_size: 1024
+      show_zone_overlay: True
+      gaussian_sigma: 1.0
+      # interval_steps 會由腳本覆蓋
+
+    video:
+      enable: True
+      fps: 30
+      # filename, interval_steps 會由腳本覆蓋
+
+    dataset:
+      enable: True
+      compression: "lzf"
+      save_resolution: 512
+      # folder, interval_steps 會由腳本覆蓋
+
+  boundary_condition:
+    type: [0, 2, 1, 2] # W, E, S, N (0:Vel, 1:Out, 2:Wall)
+    # value 會由腳本根據 u_lb 動態填入
+
+  mask:
+    enable: True
+    type: "png"
+    invert: False
+    # path 會由腳本填入
+
+  domain_zones:
+    sponge_y: 64
+    sponge_x: 128
+    buffer: 64
+    inlet_buffer: 128

@@ -19,34 +19,33 @@
 
 ## 專案結構 (Project Structure)
 
-專案已採用 `src/` 為核心的架構，並將求解器模組化分類。
+專案已採用模組化架構，將配置、文檔、輸出與源碼分離。
 
 ```text
 C:\Users\GAI\Desktop\NCA_workspace\01-lbm-2d\
 ├── config.yaml                     # [核心] 預設全域配置文件
 ├── requirements.txt                # Python 依賴庫
+├── configs/                        # [配置] 實驗與基準測試配置
+│   ├── templates/                  # 模板 (config_template.yaml)
+│   ├── experiments/                # 批量實驗 (Hyper Configs)
+│   └── benchmarks/                 # 基準測試
+├── docs/                           # [文件] 專案文檔與筆記 (原 my_docs)
+├── notebooks/                      # [實驗] Jupyter Notebooks
+├── outputs/                        # [輸出] 模擬結果與日誌
+│   ├── simulation_data/            # HDF5 數據 (原 output/dataset)
+│   ├── benchmarks/                 # 基準測試結果
+│   └── visualization/              # 圖片與影片
 ├── src/
-│   ├── configs/                    # 配置檔模板與變體
-│   │   ├── config_template.yaml
-│   │   └── hyper_configs/          # 用於批量實驗的參數化配置
-│   ├── GenMask/                    # [工具] 幾何遮罩生成
-│   │   ├── gen_rects_numpy.py      # 生成隨機矩形障礙物 Masks
-│   │   └── rect_masks/             # 預設 Mask 輸出目錄
-│   └── lbm_mrt_les/                # [核心] LBM 求解器源碼
-│       ├── engine/                 # [核心] 物理運算與模擬邏輯
-│       │   ├── LBM_solver.py       # 主要求解器 (LBM2D_MRT_LES Class)
-│       │   └── simulation_ops.py   # 模擬主迴圈 (Loop & Stability Check)
-│       ├── runners/                # [執行] 程式入口點
-│       │   ├── run_one_case.py     # 單一 Config 批量執行入口
-│       │   └── run_multi_case.py   # Config-Mask 一對一批量執行入口
-│       ├── utils/                  # [輔助] 工具與配置生成
-│       │   └── utils.py            # 通用輔助函式 (Config讀取, 物理計算)
-│       └── io/                     # [輸出] 視覺化與數據寫入
-│           ├── LBMCaseWriter.py    # HDF5 數據寫入器
-│           ├── Taichi_Gui_Viz.py   # Taichi GUI 視覺化
-│           └── VideoRecorder.py    # 影片錄製工具
-├── output/                         # 模擬結果輸出 (HDF5, Video, JSON)
-└── my_docs/                        # 文件與研究筆記
+│   ├── tools/                      # [工具] 地圖與遮罩生成 (原 generators)
+│   │   ├── mask_rect_gen.py        # 隨機矩形生成
+│   │   ├── hybrid_map_gen.py       # 混合地圖生成
+│   │   └── config_batch_gen.py     # 批量配置生成
+│   ├── analysis/                   # [分析] 後處理與統計 (原 post_process)
+│   └── lbm_mrt_les/                # [核心] LBM 求解器
+│       ├── engine/                 # 物理運算
+│       ├── runners/                # 執行入口
+│       └── io/                     # 數據讀寫
+└── archive/                        # [歸檔] 舊版代碼 (原 old)
 ```
 
 ---
@@ -66,10 +65,10 @@ pip install -r requirements.txt
 如果沒有現成的幾何遮罩，可使用生成器產生一批隨機障礙物：
 
 ```bash
-python src/GenMask/gen_rects_numpy.py
+python src/tools/mask_rect_gen.py
 ```
 
-- 輸出: `src/GenMask/rect_masks/*.png`
+- 輸出: `src/tools/rect_masks/*.png`
 
 ### 3. 執行模擬
 
@@ -78,7 +77,7 @@ python src/GenMask/gen_rects_numpy.py
 適用於固定物理條件 (如固定 Re)，跑多個不同幾何形狀。
 
 ```bash
-python -m src.lbm_mrt_les.runners.run_one_case --config src/configs/config_template.yaml --mask_dir src/GenMask/rect_masks
+python -m src.lbm_mrt_les.runners.run_one_case --config configs/templates/config_template.yaml --mask_dir src/tools/rect_masks
 ```
 
 #### 模式 B: 進階批量 (Config-Mask 一對一)
@@ -86,7 +85,7 @@ python -m src.lbm_mrt_les.runners.run_one_case --config src/configs/config_templ
 適用於產生多樣化物理條件 (不同 Re, 不同解析度) 的數據集。需確保 Config 檔案數量與 Mask 檔案數量一致且排序對應。
 
 ```bash
-python -m src.lbm_mrt_les.runners.run_multi_case --config_dir src/configs/hyper_configs --mask_dir src/GenMask/generated_maps_advanced
+python -m src.lbm_mrt_les.runners.run_multi_case --config_dir configs/experiments --mask_dir src/tools/hybrid_maps
 ```
 
 ---
@@ -115,12 +114,12 @@ boundaries:
 
 obstacle:
   use_mask: true
-  mask_dir: "output/masks"
+  mask_dir: "outputs/simulation_data/masks"
 
 outputs:
   dataset:
     enable: true
-    folder: "output/dataset" # HDF5 輸出位置
+    folder: "outputs/simulation_data" # HDF5 輸出位置
   video:
     enable: true
     fps: 30
@@ -132,7 +131,7 @@ outputs:
 
 系統主要輸出 **HDF5 (`.h5`)** 檔案，專為深度學習設計。
 
-**檔案路徑:** `output/dataset/h5_SimData/<CaseName>.h5`
+**檔案路徑:** `outputs/simulation_data/h5_SimData/<CaseName>.h5`
 
 **數據結構 (HDF5 Group/Dataset):**
 

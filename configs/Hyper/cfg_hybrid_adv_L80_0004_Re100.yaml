@@ -1,0 +1,19 @@
+simulation: {nx: 4096, ny: 1024, max_steps: 1000000, warmup_steps: 2000, smagorinsky_constant: 0.2,
+  ghost_moments_s: 1.05, name: hybrid_adv_L80_0004_Re100, nu: 0.04, characteristic_length: 80.0,
+  compute_step_size: 64}
+outputs:
+  enable_profiling: false
+  gui: {enable: true, max_size: 1024, show_zone_overlay: true, gaussian_sigma: 1.0,
+    interval_steps: 64}
+  video: {enable: true, fps: 30, interval_steps: 64, filename: video_hybrid_adv_L80_0004_Re100.mp4}
+  dataset: {enable: true, compression: lzf, save_resolution: 512, interval_steps: 64,
+    folder: outputs/simulation_data/Hyper/}
+boundary_condition:
+  type: [0, 2, 1, 2]
+  value:
+  - [0.05, 0.0]
+  - [0.0, 0.0]
+  - [0.0, 0.0]
+  - [0.0, 0.0]
+mask: {enable: true, type: png, invert: false, path: mask/Hyper\hybrid_adv_L80_0004.png}
+domain_zones: {sponge_y: 64, sponge_x: 128, buffer: 64, inlet_buffer: 128}

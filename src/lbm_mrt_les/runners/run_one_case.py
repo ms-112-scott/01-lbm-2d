@@ -237,14 +237,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="src/configs/config_template.yaml",
+        default="configs/templates/config_template.yaml",
         help="Path to the configuration YAML file",
     )
 
     parser.add_argument(
         "--mask_dir",
         type=str,
-        default="src/generators/rect_masks",
+        default="src/tools/rect_masks",
         help="Directory containing PNG mask files",
     )
 

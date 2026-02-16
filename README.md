@@ -76,7 +76,7 @@ pip install -r requirements.txt
 Generate random rectangular obstacle masks to create structural diversity in your dataset:
 
 ```bash
-python src/generators/mask_rect_gen.py
+python src/tools/mask_rect_gen.py
 
 ```
 
@@ -86,15 +86,15 @@ Execute simulations for all masks in a directory using a template configuration:
 
 ```bash
 python -m src.lbm_mrt_les.runners.run_one_case \
-    --config src/configs/config_template.yaml \
-    --mask_dir src/generators/rect_masks
+    --config configs/templates/config_template.yaml \
+    --mask_dir src/tools/rect_masks
 
 ```
 
 ```bash
 python -m src.lbm_mrt_les.runners.run_multi_case \
-    --config src/configs/hyper_configs \
-    --mask_dir src/generators/hyper_masks
+    --config_dir configs/experiments \
+    --mask_dir src/tools/hybrid_maps
 
 ```
 
@@ -103,7 +103,7 @@ python -m src.lbm_mrt_les.runners.run_multi_case \
 Calculate Time-Averaged (RANS-like) fields for steady-state surrogate training:
 
 ```bash
-python src/post_process/rans_calc.py
+python src/analysis/rans_calc.py
 
 ```
 
@@ -131,9 +131,10 @@ src/
 │   ├── engine/          # Taichi Kernels (Collision, Streaming, BCs)
 │   ├── runners/         # Execution Logic (Batch/Single)
 │   └── io/              # HDF5 & Visualization Handlers
-├── generators/          # Dataset Synthesis Tools (Masks/Configs)
-└── post_process/        # Statistical Analysis & Label Prep
-
+├── tools/               # Dataset Synthesis Tools (Masks/Configs)
+└── analysis/            # Statistical Analysis & Label Prep
+configs/                 # Simulation Configurations
+outputs/                 # Simulation Results
 ```
 
 ---
