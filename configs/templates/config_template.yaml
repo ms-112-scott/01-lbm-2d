@@ -21,7 +21,7 @@ simulation:
 
   # --- 湍流模型與穩定性 ---
   smagorinsky_constant: 0.2 # LES 次網格模型常數
-  ghost_moments_s: 1.05 # MRT Ghost Moments 鬆弛率
+  ghost_moments_s: 1.2 # MRT Ghost Moments 鬆弛率 (調高至 1.1~1.2 以壓制棋盤格噪音)
 
 # ==========================================
 #   輸出控制 (Outputs) - 獨立開關與頻率

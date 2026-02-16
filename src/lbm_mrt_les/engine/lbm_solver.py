@@ -344,9 +344,9 @@ class LBM2D_MRT_LES:
     @ti.kernel
     def apply_bc(self):
         self.frame_count[None] += 1
-        # 緩啟動
-
-        ramp = tm.min(1.0, float(self.frame_count[None]) / self.warmup_steps + 1e-5)
+        # 緩啟動 (Smoother Cosine Ramp)
+        progress = tm.min(1.0, float(self.frame_count[None]) / self.warmup_steps)
+        ramp = 1.0 - tm.cos(0.5 * 3.14159265 * progress)
 
         for j in range(1, self.ny - 1):
             self.apply_bc_core(1, 0, 0, j, 1, j, ramp)
@@ -498,6 +498,20 @@ class LBM2D_MRT_LES:
     def get_force(self):
         self.compute_force_on_obstacle()
         return self.force_sum[None].to_numpy()
+
+    @ti.kernel
+    def _get_max_velocity_kernel(self) -> ti.f32:
+        max_v = 0.0
+        for i, j in self.vel:
+            v_mag = self.vel[i, j].norm()
+            ti.atomic_max(max_v, v_mag)
+        return max_v
+
+    def get_max_velocity(self):
+        """
+        獲取全場最大流速 (LBM 單位)
+        """
+        return self._get_max_velocity_kernel()
 
     # endregion
     # ------------------------------------------------
