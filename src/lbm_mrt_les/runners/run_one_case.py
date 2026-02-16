@@ -121,7 +121,9 @@ def init_simulation_env(config, out_dir, png_path):
         h5_path = os.path.join(h5_folder, h5_filename)
 
         print(f"[Setup] Initializing Async HDF5 Writer: {h5_path}")
-        writer = AsyncLBMCaseWriter(h5_path, config, solver.nx, solver.ny)
+        writer = AsyncLBMCaseWriter(
+            h5_path, config, solver.nx, solver.ny, mask_data=mask
+        )
 
     return solver, viz, gui, recorder, writer
 

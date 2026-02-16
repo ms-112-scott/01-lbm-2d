@@ -5,10 +5,11 @@ import os
 import cv2  # 必須安裝 opencv-python
 import threading
 import queue
+import scipy.ndimage
 
 
 class LBMCaseWriter:
-    def __init__(self, file_path, config, nx, ny, channels=9):
+    def __init__(self, file_path, config, nx, ny, channels=9, mask_data=None):
         # 確保目錄存在
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
@@ -67,8 +68,49 @@ class LBMCaseWriter:
         # ---------------------------------------------------------
         self.f = h5py.File(file_path, "w", libver="latest")
 
-        self.dset_snapshots = self.f.create_dataset(
-            "snapshots",
+        # ---------------------------------------------------------
+        # [Static Mask] 5. 寫入靜態遮罩與 SDF
+        # ---------------------------------------------------------
+        if mask_data is not None:
+            # 1. Crop: (NX, NY) -> (Crop_W, Crop_H)
+            mask_cropped = mask_data[self.slice_x, self.slice_y]
+
+            # 2. Transpose to (H, W) for Image Logic
+            mask_hw = mask_cropped.transpose(1, 0)
+
+            # 3. Resize: 使用 Nearest Neighbor 保持 0/1 性質
+            mask_resized = cv2.resize(
+                mask_hw.astype(np.float32),
+                (self.target_w, self.target_h),
+                interpolation=cv2.INTER_NEAREST,
+            )
+
+            # 確保是二值的
+            mask_resized = (mask_resized > 0.5).astype(np.float32)
+
+            # 4. Compute SDF
+            # distance_transform_edt 計算到非零點的距離
+            # Fluid (0) -> Distance to Solid (1)
+            dist_fluid = scipy.ndimage.distance_transform_edt(1 - mask_resized)
+            # Solid (1) -> Distance to Fluid (0)
+            dist_solid = scipy.ndimage.distance_transform_edt(mask_resized)
+
+            # SDF: 流體區域為正，固體區域為負
+            sdf_field = dist_fluid - dist_solid
+
+            # 5. Stack & Write: (2, H, W) -> C0=Mask, C1=SDF
+            static_data = np.stack([mask_resized, sdf_field], axis=0)
+
+            self.f.create_dataset(
+                "static_mask",
+                data=static_data,
+                dtype="f4",
+                compression=config["outputs"]["dataset"]["compression"],
+            )
+            print("[H5] static_mask (Mask + SDF) written.")
+
+        self.dset_turbulence = self.f.create_dataset(
+            "turbulence",
             shape=(0, channels, self.target_h, self.target_w),
             maxshape=(None, channels, self.target_h, self.target_w),
             dtype="f4",
@@ -79,6 +121,9 @@ class LBMCaseWriter:
         # 統計變數
         self.running_sum = np.zeros(
             (channels, self.target_h, self.target_w), dtype=np.float64
+        )
+        self.sum_abs_vor = np.zeros(
+            (self.target_h, self.target_w), dtype=np.float64
         )
         self.running_count = 0
         self.global_min = np.full(channels, np.inf)
@@ -122,9 +167,9 @@ class LBMCaseWriter:
         data_final = resized_hwc.transpose(2, 0, 1)
 
         # 5. [Write]
-        current_len = self.dset_snapshots.shape[0]
-        self.dset_snapshots.resize(current_len + 1, axis=0)
-        self.dset_snapshots[current_len] = data_final
+        current_len = self.dset_turbulence.shape[0]
+        self.dset_turbulence.resize(current_len + 1, axis=0)
+        self.dset_turbulence[current_len] = data_final
 
         # 6. [Stats]
         self.running_sum += data_final
@@ -134,6 +179,28 @@ class LBMCaseWriter:
         frame_max = np.max(data_final, axis=(1, 2))
         self.global_min = np.minimum(self.global_min, frame_min)
         self.global_max = np.maximum(self.global_max, frame_max)
+
+        # 7. [Accumulate Vorticity]
+        # data_final: (9, H, W)
+        # 0: rho, 3: jx, 5: jy
+        rho = data_final[0]
+        jx = data_final[3]
+        jy = data_final[5]
+
+        # 計算 u, v (避免除以 0)
+        # LBM 中 rho 通常接近 1，但為了安全加個 epsilon
+        rho_safe = np.maximum(rho, 1e-6)
+        u = jx / rho_safe
+        v = jy / rho_safe
+
+        # 計算渦度 (Curl)
+        # vor = dv/dx - du/dy
+        # axis 1 is x (W), axis 0 is y (H)
+        dv_dx = np.gradient(v, axis=1)
+        du_dy = np.gradient(u, axis=0)
+        vor = dv_dx - du_dy
+
+        self.sum_abs_vor += np.abs(vor)
 
     def finalize(self):
         if self.is_closed:
@@ -148,6 +215,9 @@ class LBMCaseWriter:
 
         mean_field = (self.running_sum / self.running_count).astype(np.float32)
         self.f.create_dataset("mean_field", data=mean_field)
+        
+        # 寫入累積渦度
+        self.f.create_dataset("sum_vor", data=self.sum_abs_vor.astype(np.float32))
 
         try:
             meta_config = self.config.copy()
@@ -176,8 +246,13 @@ class LBMCaseWriter:
 # [Async Wrapper] 保持不變，直接複製使用即可
 # ------------------------------------------------------------------
 class AsyncLBMCaseWriter:
-    def __init__(self, *args, **kwargs):
-        self.writer = LBMCaseWriter(*args, **kwargs)
+    def __init__(self, *args, mask_data=None, **kwargs):
+        # 如果 mask_data 在 args 中，或者在 kwargs 中，需要正確傳遞
+        # 這裡假設使用者會以 AsyncLBMCaseWriter(path, config, nx, ny, mask_data=mask) 形式呼叫
+        # 或者 AsyncLBMCaseWriter(path, config, nx, ny, mask_data)
+
+        # 為了兼容性，我們明確提取 mask_data
+        self.writer = LBMCaseWriter(*args, mask_data=mask_data, **kwargs)
         self.queue = queue.Queue(maxsize=5)
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self._worker, daemon=True)
