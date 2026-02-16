@@ -35,8 +35,8 @@ python -m src.lbm_mrt_les.runners.run_one_case \
 
 ```bash
 python -m src.lbm_mrt_les.runners.run_multi_case \
-    --config_dir configs/experiments \
-    --mask_dir src/tools/hybrid_maps
+    --config_dir configs/Hyper \
+    --mask_dir mask/Hyper
 
 ```
 
