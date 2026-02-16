@@ -1,14 +1,78 @@
-# Taichi LBM 2D: High-Fidelity Dataset Generator for AI Fluid Dynamics
+# Taichi LBM-2D: High-Fidelity CFD Dataset Generator
 
-A high-performance, GPU-accelerated **Multiple Relaxation Time (MRT) Lattice Boltzmann** solver. Engineered specifically for generating large-scale, ML-ready CFD datasets to train neural operators and surrogate models.
+A high-performance, GPU-accelerated **Multiple Relaxation Time (MRT) Lattice Boltzmann Method (LBM)** solver implemented in Taichi. This project is specifically designed to generate large-scale, high-fidelity fluid dynamics datasets (velocity, pressure, MRT moments, SDF) for training AI surrogate models like Neural Cellular Automata (NCA) and Fourier Neural Operators (FNO).
+
+## 🚀 Key Features
+
+- **GPU Acceleration**: Leverages Taichi Lang for massively parallel computation on CUDA/Vulkan/Metal.
+- **MRT-LES Model**: Combines Multiple Relaxation Time collision for stability and Smagorinsky LES for turbulence at high Reynolds numbers.
+- **AI-Ready Output**: Exports HDF5 files containing 9-channel MRT moments, Signed Distance Fields (SDF), and accumulated statistics.
+- **Automated Pipeline**: Includes procedural geometry generators and batch runners for unsupervised dataset expansion.
+
+## 🛠 Quick Start
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/ms-112-scott/01-lbm-2d.git
+cd 01-lbm-2d
+
+# Install dependencies
+python3.13 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Running a Simulation
+
+```bash
+python -m src.lbm_mrt_les.runners.run_one_case \
+    --config configs/templates/config_template.yaml \
+    --mask_dir src/tools/rect_masks
+
+```
+
+```bash
+python -m src.lbm_mrt_les.runners.run_multi_case \
+    --config_dir configs/experiments \
+    --mask_dir src/tools/hybrid_maps
+
+```
 
 ---
 
-## Academic Context & Attribution
+## 📖 Documentation
 
-This repository serves as a core component of the research framework for **AI-driven architectural wind environment simulation**.
+Detailed documentation is available in the `docs/` directory (mostly in Traditional Chinese).
 
-It is developed as a customized and extended fork of the [LBM_Taichi](https://github.com/hietwll/LBM_Taichi.git) project, originally authored by _hietwll_. Modifications focus on integrating architectural boundary conditions and optimizing data flow for deep learning applications.
+### [00. Project Overview](./docs/00_專案總覽/00_文檔索引.md)
+
+- [Project Introduction](./docs/00_專案總覽/01_專案簡介.md)
+- [System Architecture & Core Modules](./docs/00_專案總覽/02_系統架構與核心模組.md)
+
+### [01. Setup & Configuration](./docs/01_安裝與配置/01_模擬環境設定.md)
+
+- [Environment Setup](./docs/01_安裝與配置/01_模擬環境設定.md)
+- [Configuration Details (YAML)](./docs/01_安裝與配置/02_案例管理與配置詳解.md)
+
+### [02. User Guide](./docs/02_操作指南/01_幾何場景準備.md)
+
+- [Geometry Preparation (Masks)](./docs/02_操作指南/01_幾何場景準備.md)
+- [Running Simulations & Visualization](./docs/02_操作指南/02_執行模擬與視覺化.md)
+- [Advanced Batch Processing](./docs/02_操作指南/03_多通道模擬操作手冊.md)
+
+### [03. Data & Outputs](./docs/03_數據結構與輸出/01_HDF5數據結構說明.md)
+
+- [HDF5 Data Structure](./docs/03_數據結構與輸出/01_HDF5數據結構說明.md)
+- [Data Pipeline Development](./docs/03_數據結構與輸出/04_數據管線開發進度.md)
+
+### [04. Theory & Physics](./docs/04_理論基礎/01_LBM_MRT理論基礎.md)
+
+- [LBM-MRT Theoretical Foundation](./docs/04_理論基礎/01_LBM_MRT理論基礎.md)
+- [Numerical Stability Analysis](./docs/04_理論基礎/02_數值穩定性分析.md)
+
+---
 
 ### Research Team
 
@@ -34,108 +98,6 @@ This project focuses on **Data Generation**. For the full AI pipeline, see:
 1. **[01-lbm-2d](https://github.com/ms-112-scott/01-lbm-2d.git)**: Data Generation (This Repo)
 2. **[02-nca-cfd](https://github.com/ms-112-scott/02-nca-cfd.git)**: Model Training (NCA)
 3. **[03-gh-frontend](https://github.com/ms-112-scott/03-gh-frontend.git)**: Rhino/Grasshopper Integration
-
----
-
-## 🌟 Key Features
-
-### 1. Advanced Physics Engine
-
-- **MRT Collision Model**: Decoupled relaxation rates for enhanced numerical stability at high Reynolds numbers compared to BGK.
-- **LES (Smagorinsky)**: Sub-grid scale turbulence modeling for capturing transient flow features.
-- **Acoustic Sponge Layers**: Effective absorption of pressure wave reflections at boundaries to maintain domain integrity.
-
-### 2. AI-Native Infrastructure
-
-- **HDF5 Integration**: Optimized I/O for high-speed training access.
-- **9-Component Moments**: Beyond primitive variables (), we export full MRT moments (Energy, Stress Tensors) for physics-informed learning.
-- **Automated Batching**: Procedural mask generation and configuration pairing for unsupervised dataset expansion.
-
----
-
-## 🛠 Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/ms-112-scott/01-lbm-2d.git
-cd 01-lbm-2d
-
-# Install dependencies (Taichi, H5py, PyYAML, OpenCV)
-python3.13 -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-
-```
-
----
-
-## 🚀 Workflow Quick Start
-
-### Step 1: Geometry Generation
-
-Generate random rectangular obstacle masks to create structural diversity in your dataset:
-
-```bash
-python src/tools/mask_rect_gen.py
-
-```
-
-### Step 2: Production Run
-
-Execute simulations for all masks in a directory using a template configuration:
-
-```bash
-python -m src.lbm_mrt_les.runners.run_one_case \
-    --config configs/templates/config_template.yaml \
-    --mask_dir src/tools/rect_masks
-
-```
-
-```bash
-python -m src.lbm_mrt_les.runners.run_multi_case \
-    --config_dir configs/experiments \
-    --mask_dir src/tools/hybrid_maps
-
-```
-
-### Step 3: Analytics & Labeling
-
-Calculate Time-Averaged (RANS-like) fields for steady-state surrogate training:
-
-```bash
-python src/analysis/rans_calc.py
-
-```
-
----
-
-## 📊 Data Specification
-
-Generated `.h5` files follow the `(Time, Channels, H, W)` tensor format:
-
-| Channel | Description           | Symbol |
-| ------- | --------------------- | ------ |
-| 0       | Density               |        |
-| 1 - 2   | Energy & Energy Sq.   |        |
-| 3, 5    | Momentum              |        |
-| 4, 6    | Heat Flux             |        |
-| 7 - 8   | Normal & Shear Stress |        |
-
----
-
-## 📂 Project Structure
-
-```text
-src/
-├── lbm_mrt_les/         # Core Physics Engine
-│   ├── engine/          # Taichi Kernels (Collision, Streaming, BCs)
-│   ├── runners/         # Execution Logic (Batch/Single)
-│   └── io/              # HDF5 & Visualization Handlers
-├── tools/               # Dataset Synthesis Tools (Masks/Configs)
-└── analysis/            # Statistical Analysis & Label Prep
-configs/                 # Simulation Configurations
-outputs/                 # Simulation Results
-```
 
 ---
 
