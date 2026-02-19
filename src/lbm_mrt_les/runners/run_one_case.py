@@ -8,10 +8,10 @@ import time
 
 from .. import utils
 from ..engine import simulation_ops as ops
-from ..io.lbm_writer import AsyncLBMCaseWriter
-from ..engine.lbm_solver import LBM2D_MRT_LES
-from ..io.visualizer import Taichi_Gui_Viz
-from ..io.video_recorder import VideoRecorder
+from ..io.LBM_Writer import AsyncLBMCaseWriter
+from ..engine.LBM2D_MRT_LES import LBM2D_MRT_LES
+from ..io.Taichi_Gui_Viz import Taichi_Gui_Viz
+from ..io.Video_Recorder import Video_Recorder
 
 # ---------------------------------------------------------
 # [System] Taichi Initialization
@@ -91,7 +91,7 @@ def init_simulation_env(config, out_dir, png_path):
             fname = f"Re{int(solver.Re)}_{base_name}.mp4"
             v_path = os.path.join(out_dir, "video", fname)
             os.makedirs(os.path.join(out_dir, "video"), exist_ok=True)
-            recorder = VideoRecorder(
+            recorder = Video_Recorder(
                 v_path,
                 width=viz.width,
                 height=viz.height,

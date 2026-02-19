@@ -3,7 +3,7 @@ import subprocess
 import numpy as np
 
 
-class VideoRecorder:
+class Video_Recorder:
     def __init__(self, filename, width, height, fps=30):
         self.filename = filename
         # 確保寬高為偶數

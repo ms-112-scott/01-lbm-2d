@@ -4,7 +4,7 @@ from matplotlib import cm
 import taichi as ti
 import taichi.math as tm
 
-from ..io.video_recorder import VideoRecorder
+from ..io import VideoRecorder
 from scipy.ndimage import gaussian_filter
 
 
