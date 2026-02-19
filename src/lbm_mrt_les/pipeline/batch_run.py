@@ -36,23 +36,52 @@ def main():
 
     # 3. Set up the output directory structure
     output_dirs = paths.setup_output_directories(project_paths["outputs"])
+    summary_path = os.path.join(output_dirs["plots"], "all_cases_summary.json")
+    batch_io.init_summary_file(summary_path)
 
     # 4. Main execution loop
-    all_cases_summary = []
     for i, cfg_file in enumerate(config_files):
         job_id = i + 1
         full_config_path = os.path.join(project_paths["configs"], cfg_file)
         
         print(f"--- Running Job {job_id}/{len(config_files)}: {cfg_file} ---")
+        
+        # Load config early to get pre-calculable info
+        try:
+            config = case_executor.utils.load_config(full_config_path)
+            sim_name = config.get("simulation", {}).get("name", cfg_file)
+            target_re = config.get("outputs", {}).get("target_re", "Unknown")
+            nx = config.get("simulation", {}).get("nx")
+            ny = config.get("simulation", {}).get("ny")
+            
+            # Pre-write "Running" status with pre-calculable info
+            pre_summary = {
+                "case_name": sim_name,
+                "status": "Running",
+                "job_id": job_id,
+                "parameters": {
+                    "lattice": {
+                        "target_re": target_re,
+                        "resolution_px": [nx, ny]
+                    }
+                },
+                "source_files": {
+                    "config_file": cfg_file,
+                    "mask_file": os.path.basename(config.get("mask", {}).get("path", "N/A"))
+                }
+            }
+            batch_io.update_summary_file(pre_summary, summary_path)
+        except Exception as e:
+            print(f"  [Warning] Could not pre-calculate info for {cfg_file}: {e}")
+
         gc.collect()
 
         summary_entry = case_executor.execute_case(full_config_path, project_paths, output_dirs, job_id)
-        all_cases_summary.append(summary_entry)
+        
+        # Update with final result
+        batch_io.update_summary_file(summary_entry, summary_path)
 
-    # 5. Save the final summary file
-    summary_path = os.path.join(output_dirs["plots"], "all_cases_summary.json")
-    batch_io.save_summary_file(all_cases_summary, summary_path)
+    print(f"\n[Finished] All cases processed. Summary saved to: {summary_path}")
 
 if __name__ == "__main__":
     main()
-

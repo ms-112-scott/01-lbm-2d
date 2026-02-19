@@ -46,15 +46,25 @@ def execute_case(full_config_path: str, project_paths: Dict, output_dirs: Dict, 
         summary_entry = summary_builder.build_summary_entry(
             config, lattice_metadata, physical_params, source_files
         )
+        # Ensure case_name matches what was used in pre-summary if possible, or use sim_name
+        # To be safe, we'll use sim_name which is more descriptive
         
         print(f"  [Success] Finished case {sim_name}.")
         return summary_entry
 
     except Exception as e:
         print(f"  [Error] Case failed: {e}")
-        # Return a failure summary entry
+        # Try to get sim_name from loaded config if it exists
+        case_name = os.path.basename(full_config_path)
+        try:
+            config = utils.load_config(full_config_path)
+            case_name = config.get("simulation", {}).get("name", case_name)
+        except:
+            pass
+
+        # Return a failure summary entry that matches the name used in batch_run
         return {
-            "case_name": os.path.basename(full_config_path), 
+            "case_name": case_name, 
             "status": "Failed", 
             "reason": str(e)
         }

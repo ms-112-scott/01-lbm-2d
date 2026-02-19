@@ -1,5 +1,5 @@
 from ..utils import apply_resize
-from ..utils.color_utils import *
+from .color_utils import *
 import numpy as np
 from scipy.ndimage import gaussian_filter
 

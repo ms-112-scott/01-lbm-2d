@@ -1,5 +1,6 @@
 import yaml
 import os
+import sys
 import re
 import glob
 import copy
@@ -14,8 +15,6 @@ def load_yaml(path):
 
 def generate_case_config(base_template, run_params, physical_constants):
     config = copy.deepcopy(base_template)
-    
-    # Embed physical constants for later use by the runner
     config["physical_constants"] = physical_constants
     
     sim_name = run_params["sim_name"]
@@ -27,13 +26,14 @@ def generate_case_config(base_template, run_params, physical_constants):
     mask_path = run_params["mask_path"]
     data_save_root = run_params["data_save_root"]
     project_name = run_params["project_name"]
+    warmup_steps = run_params["warmup_steps"]
 
     config["simulation"]["name"] = sim_name
     config["simulation"]["nu"] = float(f"{nu_value:.6f}")
     config["simulation"]["characteristic_length"] = float(l_char)
     config["simulation"]["compute_step_size"] = interval
+    config["simulation"]["warmup_steps"] = warmup_steps  # Set dynamic warmup steps
 
-    # 【策略干預】：低 Re 關閉 LES，避免過度耗散抹除自然渦流
     if re_value < 1000:
         config["simulation"]["smagorinsky_constant"] = 0.0
     else:
@@ -89,15 +89,12 @@ def main():
 
     for i, mask_path in enumerate(mask_files):
         filename_stem = os.path.splitext(os.path.basename(mask_path))[0]
-        
         target_re = re_list[i % len(re_list)]
-        
-        print(f"Generating map {i+1}/{len(mask_files)} (Target Re: {target_re})...")
+        print(f"Generating config for {filename_stem} (Target Re: {target_re})...")
         
         match_l = re.search(r"L(\d+)", filename_stem)
-
         if not match_l:
-            print(f"[Warning] Could not parse L from filename: {filename_stem}, skipping.")
+            print(f"  [Warning] Could not parse L from filename, skipping.")
             continue
         
         re_val = int(target_re)
@@ -113,22 +110,25 @@ def main():
             tau = 3.0 * nu + 0.5
             
         if tau < 0.505:
-            print(f"[拒絕生成] 案例 {filename_stem}:")
-            print(f"  -> 致命錯誤：為了達到 Re={re_val}，即使 u_lb 逼近極限 0.15，Tau ({tau:.4f}) 依然低於 0.505。")
-            print(f"  -> 策略建議：此地圖解析度 (L={l_char}) 太低，無法支撐如此高的雷諾數。請捨棄此案例或提高 Map 解析度。\n")
+            print(f"  [Error] Cannot generate stable config for Re={re_val} with L={l_char}. Tau ({tau:.4f}) is too low. Skipping.")
             continue
 
         if current_u_lb > base_u_lb:
-            print(f"[數值微調] 案例 {filename_stem}: 為維持穩定性，u_lb 自動從 {base_u_lb} 升至 {current_u_lb:.3f} (Tau={tau:.4f})")
+            print(f"  [Info] u_lb adjusted to {current_u_lb:.3f} to maintain stability (Tau={tau:.4f})")
 
-        steps_per_phys_sec = l_char / current_u_lb
-        target_interval = max(1, int(steps_per_phys_sec / saves_per_phys_sec))
+        # Dynamically calculate warmup_steps as 1 pass
+        nx_val = base_template["simulation"]["nx"]
+        warmup_steps = int(nx_val / current_u_lb) if current_u_lb > 0 else 0
+        
+        steps_per_phys_sec = l_char / current_u_lb if current_u_lb > 0 else 0
+        target_interval = max(1, int(steps_per_phys_sec / saves_per_phys_sec)) if steps_per_phys_sec > 0 else 1
 
         run_params = {
             "sim_name": filename_stem,
             "nu": nu, "l_char": l_char, "re": re_val, "u_lb": current_u_lb,
             "interval": target_interval, "mask_path": mask_path,
             "data_save_root": data_save_root, "project_name": project_name,
+            "warmup_steps": warmup_steps
         }
 
         final_config = generate_case_config(base_template, run_params, physical_constants)
@@ -138,10 +138,10 @@ def main():
         with open(full_config_path, "w") as f:
             yaml.dump(final_config, f, sort_keys=False, default_flow_style=None)
 
-        print(f"[{success_count+1:03d}] {filename_stem} | Re={re_val} | 保存成功")
+        print(f"  -> Config saved successfully.")
         success_count += 1
 
-    print(f"\n[Done] 嘗試生成 {len(mask_files)} 個，成功生成 {success_count} 個 Configs。")
+    print(f"\n[Done] Successfully generated {success_count} of {len(mask_files)} configs.")
 
 if __name__ == "__main__":
     main()

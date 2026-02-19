@@ -28,15 +28,18 @@ def calculate_characteristic_length(mask):
     物理意義：這是流體必須繞過的「有效障礙物寬度」，直接決定了
              狹縫處的加速效應 (Venturi effect) 和雷諾數的尺度。
     """
-    # 1. 取得 Y 軸投影 (Axis 1 = X軸方向壓縮 -> 得到 Y 軸分佈)
-    # Mask: 255=Fluid, 0=Object
-    # np.min: 如果一行中有任何黑色像素(0)，該行結果就是 0
-    y_projection = np.min(mask, axis=1)
+    # mask 形狀為 [nx, ny], True 代表固體 (Solid)
+    # 我們要找的是「有多少個 Y 座標被障礙物佔據」
+    
+    # 1. 在 X 方向上做 Any，得到長度為 ny 的布林陣列
+    # 如果該 Y 橫列中有任何一個 X 是固體，則為 True
+    y_occupied = np.any(mask, axis=0)
 
-    # 2. 統計被佔用的像素總數 (即特徵長度 L)
-    L_char = np.sum(y_projection == 0)
+    # 2. 統計 True 的數量，即為特徵長度 L
+    L_char = np.sum(y_occupied)
 
-    return int(L_char)
+    # 防呆：如果完全沒障礙物，給予一個極小值避免除以零，或是回傳 1
+    return max(1, int(L_char))
 
 def calculate_simulation_time_scale(config, print_console=False):
     """

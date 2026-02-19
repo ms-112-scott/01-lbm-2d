@@ -51,26 +51,42 @@ Execute the main runner, referencing your `project_name`. The script will automa
 
 ```bash
 # Step 3: Run the full simulation batch for your project
-python -m src.lbm_mrt_les.runners.run_multi_case --project_name Hyper
+python -m src.lbm_mrt_les.pipeline.batch_run --project_name Hyper-1
 ```
 *   **Output Location**: `outputs/{project_name}/` (containing `raw`, `vis`, `plots`, and a summary JSON).
 
 ---
 
-## 📖 Documentation
+## Academic Context & Attribution
 
-Detailed documentation is available in the `docs/` directory (mostly in Traditional Chinese).
+This repository serves as a core component of the research framework for **AI-driven architectural wind environment simulation**.
 
-### [00. Project Overview](./docs/00_專案總覽/00_文檔索引.md)
-... (documentation links remain the same) ...
-
----
+It is developed as a customized and extended fork of the [LBM_Taichi](https://github.com/hietwll/LBM_Taichi.git) project, originally authored by _hietwll_. Modifications focus on integrating architectural boundary conditions and optimizing data flow for deep learning applications.
 
 ### Research Team
-... (team info remains the same) ...
+
+**Bo-Xuan Lu (呂博軒)** _M.S. Student (112)_ Graduate Institute of Architecture, National Yang Ming Chiao Tung University (NYCU), Taiwan  
+[apc582nntscott@arch.nycu.edu.tw](mailto:apc582nntscott@arch.nycu.edu.tw)  
+ORCID: [0009-0002-5308-4810](https://orcid.org/0009-0002-5308-4810)
+
+**Assoc. Prof. June-Hao Hou (侯君昊)** _Advisor / Principal Investigator_ Graduate Institute of Architecture, National Yang Ming Chiao Tung University (NYCU), Taiwan  
+[jhou@arch.nycu.edu.tw](mailto:jhou@arch.nycu.edu.tw)  
+ORCID: [0000-0002-8362-7719](https://orcid.org/0000-0002-8362-7719)
+
+### Related Publications
+
+If you use this solver or the generated datasets, please cite:
+
+- **[CAADRIA 2025]** _Neural Cellular Automata for Dynamic Ventilation in Architectural Spaces_ ([DOI: 10.52842/conf.caadria.2025.3.325](https://doi.org/10.52842/conf.caadria.2025.3.325))
+- **[WIP]** _Modular Neural Cellular Automata (m-NCA): A Physics-Informed Framework for Real-Time Dynamic Simulation in Architectural Design_
 
 ### The Ecosystem (Polyrepo)
-... (ecosystem links remain the same) ...
+
+This project focuses on **Data Generation**. For the full AI pipeline, see:
+
+1. **[01-lbm-2d](https://github.com/ms-112-scott/01-lbm-2d.git)**: Data Generation (This Repo)
+2. **[02-nca-cfd](https://github.com/ms-112-scott/02-nca-cfd.git)**: Model Training (NCA)
+3. **[03-gh-frontend](https://github.com/ms-112-scott/03-gh-frontend.git)**: Rhino/Grasshopper Integration
 
 ---
 

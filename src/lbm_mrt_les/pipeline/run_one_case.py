@@ -6,10 +6,10 @@ import traceback
 from typing import Dict, Any
 
 from .. import utils
-from ..engine import simulation_ops as ops
-from ..engine.LBM2D_MRT_LES import LBM2D_MRT_LES
+from ..core import simulation_ops as ops
+from ..core.LBM2D_MRT_LES import LBM2D_MRT_LES
 from ..io.LBM_Writer import AsyncLBMCaseWriter
-from ..io.Taichi_Gui_Viz import Taichi_Gui_Viz
+from ..visualization.Taichi_Gui_Viz import Taichi_Gui_Viz
 from ..io.Video_Recorder import Video_Recorder
 
 ti.init(arch=ti.gpu, device_memory_fraction=0.8, log_level=ti.INFO)

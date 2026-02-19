@@ -10,7 +10,7 @@ from .physics_utils import (
     compute_coefficients,
     fit_sine_wave,
 )
-from .viz_utils import (
+from ..visualization.viz_utils import (
     plot_mask,
     plot_verification_results,
     calcu_gui_size,

@@ -71,8 +71,8 @@ template:
   simulation:
     nx: 4096                  # LBM 計算格點 X 方向數量
     ny: 1024                  # LBM 計算格點 Y 方向數量
-    max_steps: 3000        # 模擬最大時間步數 1000000
-    warmup_steps: 200        # 暖機步數（不輸出） 2000
+    max_steps: 1000000        # 模擬最大時間步數
+    # warmup_steps: 暖機步數（不輸出）。由 config_batch_gen.py 根據 (nx / u_lb) 動態計算為 1 個 pass。
     ghost_moments_s: 1.2      # MRT ghost moments 參數
 
   outputs:
