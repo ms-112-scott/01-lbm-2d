@@ -31,8 +31,8 @@ def init_simulation_env(
 
     # 1. Load and prepare the obstacle mask
     mask = utils.create_mask(config, mask_path)
-    # The characteristic length is derived from the mask itself
-    sim_cfg["characteristic_length"] = utils.calculate_characteristic_length(mask)
+    # The characteristic_length from the config is the single source of truth.
+    # Do NOT recalculate it from the mask at runtime.
 
     # 2. Setup GUI and visualizer
     gui_w, gui_h = utils.calcu_gui_size(

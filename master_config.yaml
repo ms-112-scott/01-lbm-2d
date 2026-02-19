@@ -15,33 +15,31 @@ map_generator:
   pinball:
     center_x_ratio: 0.12      # 圓柱中心 X 位置（相對於 domain 寬度比例）
     center_y_ratio: 0.5       # 圓柱中心 Y 位置（相對於 domain 高度比例）
-    radius_ratio: 0.05       # 圓柱半徑（相對於 domain 短邊比例）
-    spacing_factor: 2.5      # 多顆圓柱之間的間距倍率
+    radius_ratio: [0.03, 0.07]       # 圓柱半徑（相對於 domain 短邊比例）
+    spacing_factor: [1.8, 3.5]      # 多顆圓柱之間的間距倍率
 
   tube_bank:
     start_x_ratio: 0.30      # 管束起始 X 位置比例
     end_x_ratio: 0.55        # 管束結束 X 位置比例
-    radius_ratio: 0.03       # 管半徑比例
-    num_rows: 5              # 管束列數
-    num_cols: 6              # 管束行數
-    jitter_amount: 3         # 隨機擾動幅度（避免完全規則排列）
+    radius_ratio: [0.03, 0.09]       # 管半徑比例
+    num_rows: [3, 6]            # 管束列數
+    num_cols: [4, 7]             # 管束行數
+    jitter_amount: [10,50]       # 隨機擾動幅度（避免完全規則排列）
 
   step_urban:
     step_start_ratio: 0.55   # 階梯區起始 X 位置比例
     step_width_ratio: 0.05   # 單一階梯寬度比例
-    step_height_ratio: 0.35# 階梯高度比例
-    block_start_ratio: 0.70# 建築區起始 X 位置比例
+    step_height_ratio: [0.2, 0.45] # 階梯高度比例
+    block_start_ratio: 0.70 # 建築區起始 X 位置比例
     block_end_ratio: 0.85    # 建築區結束 X 位置比例
-    rect_count: 8            # 建築矩形數量
+    rect_count: [5, 12]            # 建築矩形數量
     max_attempts: 200        # 嘗試生成建築的最大次數
     min_distance: 64         # 建築物間最小距離（像素）
-    max_blockage_ratio: 1.0# 最大阻塞比例限制
-    rotate_angle_max: 5      # 建築物最大旋轉角度（度）
+    max_blockage_ratio: 1.0 # 最大阻塞比例限制
+    rotate_angle_max: [0,30]      # 建築物最大旋轉角度（度）
     rect_size:
-      min_w: 50              # 建築最小寬度
-      max_w: 200             # 建築最大寬度
-      min_h: 50              # 建築最小高度
-      max_h: 200             # 建築最大高度
+      w: [50, 200]              # 建築寬度
+      h: [50, 200]             # 建築寬度
 
   validation:
     boundary_buffer: 10      # 邊界緩衝距離，用於合法性檢查
@@ -54,13 +52,13 @@ map_generator:
 # ==========================================
 physical_constants:
   kinematic_viscosity_air_m2_s: 1.5e-5    # 空氣動黏滯係數（m²/s，20°C）
-  inlet_velocity_ms: 5.0                  # 宏觀物理世界入口風速（m/s）
+  inlet_velocity_ms: [1.0, 5.0, 15.0]                  # 宏觀物理世界入口風速（m/s）
 
 # ==========================================
 # 4. 物理與模擬控制
 # ==========================================
 physics_control:
-  re_list: [100, 200, 500, 800, 1000, 2000, 3000, 4000]    # 雷諾數清單（批次循環使用）
+  re_list: [100, 200, 400, 700, 1000, 1200, 1400, 1600, 1800, 2000, 2500, 3000, 3500, 4000]    # 雷諾數清單（批次循環使用）
   u_lb: 0.05                                             # 格點單位入口速度 U_LB
   saves_per_physical_second: 25                          # 每個物理秒儲存資料次數
 

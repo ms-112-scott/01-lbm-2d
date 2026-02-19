@@ -6,33 +6,64 @@
     "pinball": {
         "center_x_ratio": 0.12,
         "center_y_ratio": 0.5,
-        "radius_ratio": 0.05,
-        "spacing_factor": 2.5
+        "radius_ratio": [
+            0.03,
+            0.07
+        ],
+        "spacing_factor": [
+            1.8,
+            3.5
+        ]
     },
     "tube_bank": {
         "start_x_ratio": 0.3,
         "end_x_ratio": 0.55,
-        "radius_ratio": 0.03,
-        "num_rows": 5,
-        "num_cols": 6,
-        "jitter_amount": 3
+        "radius_ratio": [
+            0.03,
+            0.09
+        ],
+        "num_rows": [
+            3,
+            6
+        ],
+        "num_cols": [
+            4,
+            7
+        ],
+        "jitter_amount": [
+            10,
+            50
+        ]
     },
     "step_urban": {
         "step_start_ratio": 0.55,
         "step_width_ratio": 0.05,
-        "step_height_ratio": 0.35,
+        "step_height_ratio": [
+            0.2,
+            0.45
+        ],
         "block_start_ratio": 0.7,
         "block_end_ratio": 0.85,
-        "rect_count": 8,
+        "rect_count": [
+            5,
+            12
+        ],
         "max_attempts": 200,
         "min_distance": 64,
         "max_blockage_ratio": 1.0,
-        "rotate_angle_max": 5,
+        "rotate_angle_max": [
+            0,
+            30
+        ],
         "rect_size": {
-            "min_w": 50,
-            "max_w": 200,
-            "min_h": 50,
-            "max_h": 200
+            "w": [
+                50,
+                200
+            ],
+            "h": [
+                50,
+                200
+            ]
         }
     },
     "validation": {

@@ -5,7 +5,10 @@ import re
 import glob
 import copy
 import argparse
+import random
 from pathlib import Path
+from config_utils import get_sampled_value
+
 
 def load_yaml(path):
     if not os.path.exists(path):
@@ -66,7 +69,7 @@ def main():
     physics = master_cfg["physics_control"]
     base_template = master_cfg["template"]
     physical_constants = master_cfg["physical_constants"]
-    re_list = master_cfg["physics_control"]["re_list"]
+    re_list_config = master_cfg["physics_control"]["re_list"]
 
     project_name = settings["project_name"]
     project_dir = os.path.join("SimCases", project_name)
@@ -89,8 +92,13 @@ def main():
 
     for i, mask_path in enumerate(mask_files):
         filename_stem = os.path.splitext(os.path.basename(mask_path))[0]
-        target_re = re_list[i % len(re_list)]
-        print(f"Generating config for {filename_stem} (Target Re: {target_re})...")
+        
+        target_re = get_sampled_value(re_list_config)
+        if target_re is None:
+            print(f"  [Warning] Could not sample a valid Re value from 're_list' in config. Skipping.")
+            continue
+
+        print(f"Generating config for {filename_stem} (Target Re: {int(target_re)})...")
         
         match_l = re.search(r"L(\d+)", filename_stem)
         if not match_l:
@@ -132,7 +140,7 @@ def main():
         }
 
         final_config = generate_case_config(base_template, run_params, physical_constants)
-        config_filename = f"Re{re_val}_{filename_stem}.yaml"
+        config_filename = f"{filename_stem}_Re{re_val}.yaml"
         full_config_path = os.path.join(output_dir, config_filename)
 
         with open(full_config_path, "w") as f:

@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -5,6 +7,8 @@ import json
 import cv2
 import yaml
 import argparse
+from config_utils import get_sampled_value
+
 
 def load_yaml(path):
     """Loads a YAML configuration file."""
@@ -35,45 +39,53 @@ class HybridMapGenerator:
 
     def _generate_pinball_section(self):
         cfg = self.config["pinball"]
-        center_x = int(self.W * cfg["center_x_ratio"])
-        center_y = int(self.H * cfg["center_y_ratio"])
-        r = int(self.H * cfg["radius_ratio"])
-        spacing = int(r * cfg["spacing_factor"])
+        center_x = int(self.W * get_sampled_value(cfg["center_x_ratio"]))
+        center_y = int(self.H * get_sampled_value(cfg["center_y_ratio"]))
+        r = int(self.H * get_sampled_value(cfg["radius_ratio"]))
+        spacing = int(r * get_sampled_value(cfg["spacing_factor"]))
         self._add_cylinder(center_x - spacing, center_y, r)
         self._add_cylinder(center_x + spacing, center_y + spacing, r)
         self._add_cylinder(center_x + spacing, center_y - spacing, r)
 
     def _generate_tube_bank_section(self):
         cfg = self.config["tube_bank"]
-        start_x = int(self.W * cfg["start_x_ratio"])
-        end_x = int(self.W * cfg["end_x_ratio"])
-        r = int(self.H * cfg["radius_ratio"])
-        cols = cfg["num_cols"]
-        rows = cfg["num_rows"]
+        start_x = int(self.W * get_sampled_value(cfg["start_x_ratio"]))
+        end_x = int(self.W * get_sampled_value(cfg["end_x_ratio"]))
+        r = int(self.H * get_sampled_value(cfg["radius_ratio"]))
+        cols = get_sampled_value(cfg["num_cols"])
+        rows = get_sampled_value(cfg["num_rows"])
         col_spacing = (end_x - start_x) // cols
         row_spacing = self.H // (rows + 1)
+        jitter_range = cfg.get("jitter_range", [0, 0])
+
         for c in range(cols):
             offset_y = (row_spacing // 2) if (c % 2 == 1) else 0
             for r_idx in range(rows):
                 cx = start_x + c * col_spacing
                 cy = row_spacing * (r_idx + 1) + offset_y
-                jx = np.random.randint(-cfg["jitter_amount"], cfg["jitter_amount"] + 1)
-                jy = np.random.randint(-cfg["jitter_amount"], cfg["jitter_amount"] + 1)
+                jx = get_sampled_value(jitter_range)
+                jy = get_sampled_value(jitter_range)
                 if r < cy < self.H - r:
                     self._add_cylinder(cx + jx, cy + jy, r)
 
-    def _get_random_rotated_rect(self, bounds, size_cfg, angle_max):
-        max_diag = np.sqrt(size_cfg["max_w"] ** 2 + size_cfg["max_h"] ** 2)
+    def _get_random_rotated_rect(self, bounds, size_cfg, angle_range):
+        # Using a simple diagonal for margin calculation
+        max_w = size_cfg["w"][1] if isinstance(size_cfg["w"], list) else size_cfg["w"]
+        max_h = size_cfg["h"][1] if isinstance(size_cfg["h"], list) else size_cfg["h"]
+        max_diag = np.sqrt(max_w**2 + max_h**2)
+        
         margin = int(max_diag / 2) + 2
         safe_x_min = bounds["min_x"] + margin
         safe_x_max = bounds["max_x"] - margin
         safe_y_min = bounds["min_y"] + margin
         safe_y_max = bounds["max_y"] - margin
-        cx = np.random.randint(safe_x_min, safe_x_max if safe_x_max > safe_x_min else safe_x_min + 1)
-        cy = np.random.randint(safe_y_min, safe_y_max if safe_y_max > safe_y_min else safe_y_min + 1)
-        w = np.random.randint(size_cfg["min_w"], size_cfg["max_w"])
-        h = np.random.randint(size_cfg["min_h"], size_cfg["max_h"])
-        angle = np.random.uniform(-angle_max, angle_max)
+        
+        cx = get_sampled_value([safe_x_min, max(safe_x_min, safe_x_max)])
+        cy = get_sampled_value([safe_y_min, max(safe_y_min, safe_y_max)])
+        w = get_sampled_value(size_cfg["w"])
+        h = get_sampled_value(size_cfg["h"])
+        angle = get_sampled_value(angle_range)
+
         rect_def = ((cx, cy), (w, h), angle)
         box = cv2.boxPoints(rect_def)
         return np.int64(box), w
@@ -96,33 +108,40 @@ class HybridMapGenerator:
     def _generate_step_urban_section(self):
         cfg = self.config["step_urban"]
         # 第一個特徵：初始的階梯方塊寬度
-        step_x = int(self.W * cfg["step_start_ratio"])
-        step_h = int(self.H * cfg["step_height_ratio"])
-        step_w = int(self.W * cfg["step_width_ratio"])
+        step_x = int(self.W * get_sampled_value(cfg["step_start_ratio"]))
+        step_h = int(self.H * get_sampled_value(cfg["step_height_ratio"]))
+        step_w = int(self.W * get_sampled_value(cfg["step_width_ratio"]))
         self._add_box(step_x, 0, step_w, step_h)
 
-        block_start_x = int(self.W * cfg["block_start_ratio"])
+        block_start_x = int(self.W * get_sampled_value(cfg["block_start_ratio"]))
         urban_bounds = {
             "min_x": max(block_start_x, step_x + step_w + 20),
-            "max_x": int(self.W * cfg["block_end_ratio"]),
+            "max_x": int(self.W * get_sampled_value(cfg["block_end_ratio"])),
             "min_y": 0, "max_y": self.H
         }
         
+        rect_count = get_sampled_value(cfg["rect_count"])
+        angle_range = get_sampled_value(cfg["rotate_angle_max"])
+
         placed_widths = []
         for _ in range(cfg["max_attempts"]):
-            if len(placed_widths) >= cfg["rect_count"]: break
+            if len(placed_widths) >= rect_count: break
+            
             box_points, w_val = self._get_random_rotated_rect(
-                urban_bounds, cfg["rect_size"], cfg["rotate_angle_max"]
+                urban_bounds, cfg["rect_size"], angle_range
             )
-            if self._check_sdf_validity(box_points, cfg["min_distance"]) and \
-               self._check_blockage_ratio(box_points, cfg["max_blockage_ratio"]):
+            
+            min_dist = get_sampled_value(cfg["min_distance"])
+            max_blockage = get_sampled_value(cfg["max_blockage_ratio"])
+
+            if self._check_sdf_validity(box_points, min_dist) and \
+               self._check_blockage_ratio(box_points, max_blockage):
                 cv2.drawContours(self.grid, [box_points], 0, 1, -1)
                 placed_widths.append(w_val)
                 
         # 【修改點】：取生成的隨機方塊與初始階梯方塊中的「最大值」
         max_placed_w = np.max(placed_widths) if placed_widths else 0
         max_feature_length = max(step_w, max_placed_w)
-        
         return float(max_feature_length)
 
     def generate(self):
@@ -137,6 +156,8 @@ class HybridMapGenerator:
         self.grid[:, :buffer] = self.grid[:, -buffer:] = 0
         
         # 【修改點】：直接回傳浮點數最大寬度，移除 /20 * 20 的階梯化邏輯
+        base_factor = 50
+        max_feature_length = int(max_feature_length/base_factor) * base_factor
         return max_feature_length
 
     def save_map(self, filename):
@@ -151,10 +172,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "-c", "--config", default="master_config.yaml",
         help="Path to the master config file."
-    )
-    parser.add_argument(
-        "-n", "--num_maps", type=int, default=8,
-        help="Number of maps to generate."
     )
     args = parser.parse_args()
 
@@ -172,7 +189,14 @@ if __name__ == "__main__":
     with open(os.path.join(output_dir, "map_gen_config.json"), "w") as f:
         json.dump(map_gen_config, f, indent=4)
 
-    for i in range(args.num_maps):
+    # If re_list is a range, we need to decide how many maps to generate.
+    # We'll default to 10 or a specified number.
+    num_maps_to_generate = 10 
+    if isinstance(re_list, list) and len(re_list) != 2:
+        num_maps_to_generate = len(re_list)
+
+    print(f"--- Generating {num_maps_to_generate} maps... ---")
+    for i in range(num_maps_to_generate):
 
         l_char = generator.generate()
         
@@ -182,4 +206,4 @@ if __name__ == "__main__":
         generator.save_map(filename)
         print(f"  -> Characteristic Length (L): {l_char:.1f}")
 
-    print(f"\n[Done] Generated {args.num_maps} maps in '{output_dir}'.")
+    print(f"\n[Done] Generated {num_maps_to_generate} maps in '{output_dir}'.")
