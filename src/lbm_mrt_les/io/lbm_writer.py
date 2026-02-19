@@ -122,9 +122,12 @@ class LBMCaseWriter:
         self.running_sum = np.zeros(
             (channels, self.target_h, self.target_w), dtype=np.float64
         )
+        self.running_vel_sq_sum = np.zeros((self.target_h, self.target_w), dtype=np.float64)
+
         self.sum_abs_vor = np.zeros(
             (self.target_h, self.target_w), dtype=np.float64
         )
+        
         self.running_count = 0
         self.global_min = np.full(channels, np.inf)
         self.global_max = np.full(channels, -np.inf)
@@ -192,6 +195,10 @@ class LBMCaseWriter:
         rho_safe = np.maximum(rho, 1e-6)
         u = jx / rho_safe
         v = jy / rho_safe
+        vel_mag_sq = u**2 + v**2  # 速度模長的平方
+
+        # 計算累加速度平方
+        self.running_vel_sq_sum += vel_mag_sq
 
         # 計算渦度 (Curl)
         # vor = dv/dx - du/dy
@@ -214,7 +221,10 @@ class LBMCaseWriter:
         print(f"[H5] Finalizing stats for {self.file_path}...")
 
         mean_field = (self.running_sum / self.running_count).astype(np.float32)
-        self.f.create_dataset("mean_field", data=mean_field)
+        self.f.create_dataset("mean_vel_field", data=mean_field)
+
+        mean_vel_sq_field = (self.running_vel_sq_sum / self.running_count).astype(np.float32)
+        self.f.create_dataset("mean_vel_sq_field", data=mean_vel_sq_field)
         
         # 寫入累積渦度
         self.f.create_dataset("sum_vor", data=self.sum_abs_vor.astype(np.float32))
