@@ -1,131 +1,131 @@
 import argparse
 import os
 import sys
-import time
-import yaml  # 需要 pip install pyyaml
-import gc  # Garbage Collection
+import yaml
+import gc
+import json
 import traceback
+from typing import List, Dict, Any
 
+from .. import utils
+from .run_one_case import main as run_one_case_main
 
-from .run_one_case import main
-
+def setup_directories(base_path: str) -> Dict[str, str]:
+    """Creates the standardized directory structure for a project."""
+    paths = {
+        "base": base_path,
+        "raw": os.path.join(base_path, "raw"),
+        "vis": os.path.join(base_path, "vis"),
+        "plots": os.path.join(base_path, "plots"),
+    }
+    for path in paths.values():
+        os.makedirs(path, exist_ok=True)
+    return paths
 
 def run_batch_simulation():
-    parser = argparse.ArgumentParser(
-        description="One-to-One Batch Runner (Config[i] -> Mask[i])"
-    )
-
-    # 1. Config 資料夾
+    parser = argparse.ArgumentParser(description="Multi-case batch runner for LBM simulations.")
     parser.add_argument(
-        "--config_dir",
+        "--project_name",
         type=str,
-        default="configs/Hyper",
-        help="Directory containing YAML config files",
+        required=True,
+        help="The project name (e.g., 'Hyper') to find configs and store outputs.",
     )
-
-    # 2. Mask 資料夾
-    parser.add_argument(
-        "--mask_dir",
-        type=str,
-        default="mask/Hyper",
-        help="Directory containing PNG mask files",
-    )
-
     args = parser.parse_args()
 
-    # --- 檢查路徑是否存在 ---
-    if not os.path.exists(args.config_dir):
-        print(f"[Error] Config directory not found: {args.config_dir}")
+    # MODIFIED: All paths are now derived from the project_name within the 'SimCases' directory
+    project_base_dir = os.path.join("SimCases", args.project_name)
+    config_dir = os.path.join(project_base_dir, "configs")
+    mask_dir = os.path.join(project_base_dir, "masks") # New: define mask_dir here
+
+    if not os.path.isdir(config_dir):
+        print(f"[Error] Config directory not found for project '{args.project_name}': {config_dir}")
+        print("Please ensure configs are generated and located at this path.")
         sys.exit(1)
 
-    if not os.path.exists(args.mask_dir):
-        print(f"[Error] Mask directory not found: {args.mask_dir}")
+    # It's good practice to also check for mask_dir if we're expecting masks there
+    if not os.path.isdir(mask_dir):
+        print(f"[Error] Mask directory not found for project '{args.project_name}': {mask_dir}")
+        print("Please ensure masks are generated and located at this path.")
         sys.exit(1)
 
-    # --- 搜尋並排序檔案 (關鍵：必須排序以確保一對一順序正確) ---
-    config_files = sorted(
-        [
-            f
-            for f in os.listdir(args.config_dir)
-            if f.endswith(".yaml") or f.endswith(".yml")
-        ]
-    )
-
-    mask_files = sorted(
-        [f for f in os.listdir(args.mask_dir) if f.lower().endswith(".png")]
-    )
-
-    # ==========================================
-    # [新增] 嚴格檢查數量是否一致
-    # ==========================================
-    num_configs = len(config_files)
-    num_masks = len(mask_files)
-
-    if num_configs == 0 or num_masks == 0:
-        print("[Error] No config or mask files found.")
+    config_files = sorted([f for f in os.listdir(config_dir) if f.endswith(".yaml")])
+    if not config_files:
+        print(f"[Error] No YAML config files found in {config_dir}")
         sys.exit(1)
 
-    if num_configs != num_masks:
-        print("\n" + "=" * 60)
-        print(f"\033[91m[CRITICAL ERROR] Count Mismatch!\033[0m")
-        print(f"Config files: {num_configs}")
-        print(f"Mask files  : {num_masks}")
-        print(
-            "To run in one-to-one mode, the number of files must be exactly the same."
-        )
-        print("Please check your directories.")
-        print("=" * 60)
-        sys.exit(1)
-
-    print(f"Found {num_configs} pairs of (Config + Mask).")
-    print("Mode: One-to-One Sequential Execution")
+    print(f"Found {len(config_files)} simulation cases for project '{args.project_name}'.")
     print("=" * 60)
 
-    # ==========================================
-    # 單層迴圈: 使用 zip 同時遍歷兩個列表
-    # ==========================================
-    # zip 會將 (config_files[0], mask_files[0]), (config_files[1], mask_files[1])... 配對
-    for i, (cfg_file, mask_file) in enumerate(zip(config_files, mask_files)):
+    all_cases_metadata = []
+    # The output structure is still within 'outputs' as previously defined
+    output_project_base_path = os.path.join("outputs", args.project_name)
+    dir_paths = setup_directories(output_project_base_path)
 
+    for i, cfg_file in enumerate(config_files):
         job_id = i + 1
-        full_config_path = os.path.join(args.config_dir, cfg_file)
-        full_mask_path = os.path.join(args.mask_dir, mask_file)
+        full_config_path = os.path.join(config_dir, cfg_file)
 
-        # 取得檔名 (不含副檔名)
-        cfg_name = os.path.splitext(cfg_file)[0]
-        mask_name = os.path.splitext(mask_file)[0]
-
-        print(f"\n[Job {job_id}/{num_configs}]")
-        print(f"   Config: {cfg_name}")
-        print(f"   Mask  : {mask_name}")
+        print(f"\n[Job {job_id}/{len(config_files)}]")
+        print(f"    Config: {cfg_file}")
         print("-" * 40)
 
-        # --- 記憶體清理 ---
         gc.collect()
 
         try:
-            # --- 呼叫主程式 ---
-            # 這裡呼叫你的 main 函數
-            # 確保 main.py 內部邏輯能處理這兩個參數
-            main(full_config_path, full_mask_path)
+            config = utils.load_config(full_config_path)
+            outputs_cfg = config.get("outputs", {})
+            sim_cfg = config.get("simulation", {})
+            mask_cfg = config.get("mask", {})
 
-            print(f"   >>> \033[92mSuccess\033[0m.")
+            sim_name = sim_cfg.get("name", f"Case_{job_id:04d}")
+            target_re = outputs_cfg.get("target_re", 0)
+            
+            # MODIFIED: Get mask filename from the config and construct full path with the new mask_dir
+            mask_filename = os.path.basename(mask_cfg.get("path", "")) # config_batch_gen now writes the full path, but we need to reconstruct for the new structure
+            if not mask_filename:
+                 print(f"   >>> \033[91m[Error] Mask filename not found in config for {cfg_file}\033[0m")
+                 continue
+            mask_path = os.path.join(mask_dir, mask_filename)
+
+            if not os.path.exists(mask_path):
+                 print(f"   >>> \033[91m[Error] Mask file not found: {mask_path}\033[0m")
+                 continue
+
+            base_filename = f"{sim_name}_Re{target_re}"
+            h5_path = os.path.join(dir_paths["raw"], f"{base_filename}.h5")
+            video_path = os.path.join(dir_paths["vis"], f"{base_filename}.mp4")
+
+            case_metadata = run_one_case_main(full_config_path, mask_path, h5_path, video_path)
+            
+            case_metadata["case_name"] = sim_name
+            case_metadata["config_file"] = cfg_file
+            case_metadata["mask_file"] = os.path.basename(mask_path)
+            all_cases_metadata.append(case_metadata)
+
+            if case_metadata.get("status") == "Success":
+                 print(f"   >>> \032[92mSuccess\032[0m.")
+            else:
+                 print(f"   >>> \032[91m[Error] Failed: {case_metadata.get('reason')}\032[0m")
 
         except KeyboardInterrupt:
             print("\n[User Abort] Stopping batch run...")
-            sys.exit(0)
+            break
         except Exception as e:
-            print(f"   >>> \033[91m[Error] Failed: {e}\033[0m")
-            # 這裡建議把錯誤寫入 log 檔，然後繼續跑下一個
+            print(f"   >>> \032[91m[Critical Error] Job failed: {e}\032[0m")
             traceback.print_exc()
+            all_cases_metadata.append({"case_name": cfg_file, "status": "Failed", "reason": str(e)})
             continue
 
-        # 稍作休息，讓 GPU 降溫
-        time.sleep(1.0)
+    summary_path = os.path.join(dir_paths["plots"], "all_cases_summary.json")
+    try:
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(all_cases_metadata, f, indent=4)
+        print(f"\n[Done] Saved batch summary to: {summary_path}")
+    except Exception as e:
+        print(f"\n[Error] Could not save summary file: {e}")
 
     print("\n" + "=" * 60)
     print("All batch jobs finished.")
-
 
 if __name__ == "__main__":
     run_batch_simulation()
