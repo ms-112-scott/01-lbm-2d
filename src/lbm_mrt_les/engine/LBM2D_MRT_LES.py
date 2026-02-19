@@ -1,17 +1,8 @@
-import matplotlib
 import numpy as np
-from matplotlib import cm
 import taichi as ti
 import taichi.math as tm
 
-from ..io import VideoRecorder
-from scipy.ndimage import gaussian_filter
 
-
-import sys
-import os
-
-from .. import utils
 
 ti.init(arch=ti.gpu)
 
