@@ -12,8 +12,11 @@ def load_yaml(path):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-def generate_case_config(base_template, run_params):
+def generate_case_config(base_template, run_params, physical_constants):
     config = copy.deepcopy(base_template)
+    
+    # Embed physical constants for later use by the runner
+    config["physical_constants"] = physical_constants
     
     sim_name = run_params["sim_name"]
     nu_value = run_params["nu"]
@@ -62,6 +65,7 @@ def main():
     settings = master_cfg["settings"]
     physics = master_cfg["physics_control"]
     base_template = master_cfg["template"]
+    physical_constants = master_cfg["physical_constants"]
     re_list = master_cfg["physics_control"]["re_list"]
 
     project_name = settings["project_name"]
@@ -86,59 +90,48 @@ def main():
     for i, mask_path in enumerate(mask_files):
         filename_stem = os.path.splitext(os.path.basename(mask_path))[0]
         
-        # 【修改點】：依照順序從 master_config 取出目標 Re
         target_re = re_list[i % len(re_list)]
         
-        # 【修改點】：修復 args.num_maps 未定義的問題，改用 len(mask_files)
         print(f"Generating map {i+1}/{len(mask_files)} (Target Re: {target_re})...")
         
-        # 僅需從檔名抽取特徵長度 L
         match_l = re.search(r"L(\d+)", filename_stem)
 
         if not match_l:
             print(f"[Warning] Could not parse L from filename: {filename_stem}, skipping.")
             continue
         
-        # 【修改點】：直接將目標 Re 賦予 re_val，取代錯誤的 match_re.group(1)
         re_val = int(target_re)
         l_char = float(match_l.group(1))
 
-        # ==========================================
-        # 【數值干預】：自動微調 u_lb 以滿足 Tau 穩定性
-        # ==========================================
         current_u_lb = base_u_lb
         nu = (current_u_lb * l_char) / re_val
         tau = 3.0 * nu + 0.5
         
-        # 當 tau 太低，且 u_lb 還沒頂到馬赫數極限 (0.15) 時，微調 u_lb
         while tau < 0.505 and current_u_lb < 0.15:
-            current_u_lb += 0.005  # 每次微調 0.005
+            current_u_lb += 0.005
             nu = (current_u_lb * l_char) / re_val
             tau = 3.0 * nu + 0.5
             
-        # 檢查防呆極限
         if tau < 0.505:
             print(f"[拒絕生成] 案例 {filename_stem}:")
             print(f"  -> 致命錯誤：為了達到 Re={re_val}，即使 u_lb 逼近極限 0.15，Tau ({tau:.4f}) 依然低於 0.505。")
             print(f"  -> 策略建議：此地圖解析度 (L={l_char}) 太低，無法支撐如此高的雷諾數。請捨棄此案例或提高 Map 解析度。\n")
-            continue # 直接跳過這個案例，不生成 YAML
+            continue
 
         if current_u_lb > base_u_lb:
             print(f"[數值微調] 案例 {filename_stem}: 為維持穩定性，u_lb 自動從 {base_u_lb} 升至 {current_u_lb:.3f} (Tau={tau:.4f})")
-        # ==========================================
 
-        # 使用調整後的 current_u_lb 重新計算採樣間隔
         steps_per_phys_sec = l_char / current_u_lb
         target_interval = max(1, int(steps_per_phys_sec / saves_per_phys_sec))
 
         run_params = {
-            "sim_name": filename_stem, # 使用乾淨的檔名作為 sim_name
+            "sim_name": filename_stem,
             "nu": nu, "l_char": l_char, "re": re_val, "u_lb": current_u_lb,
             "interval": target_interval, "mask_path": mask_path,
             "data_save_root": data_save_root, "project_name": project_name,
         }
 
-        final_config = generate_case_config(base_template, run_params)
+        final_config = generate_case_config(base_template, run_params, physical_constants)
         config_filename = f"Re{re_val}_{filename_stem}.yaml"
         full_config_path = os.path.join(output_dir, config_filename)
 

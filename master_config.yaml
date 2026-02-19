@@ -1,111 +1,108 @@
 # ==========================================
-# 1. 批次處理與路徑設定 (Batch & Paths)
+# 1. 批次處理與路徑設定
 # ==========================================
 settings:
-  # [New] The overall project name, used for creating the main output folder.
-  project_name: "Hyper-1"
+  project_name: "Hyper-1"    # 專案整體名稱，用於建立主要輸出資料夾
 
 # ==========================================
-# 2. 地圖生成器設定 (Map Generator)
+# 2. 地圖生成器設定
 # ==========================================
 map_generator:
-  # Controls the hybrid_map_gen.py script
   domain:
-    height: 1024
-    width: 4096
+    height: 1024              # 計算域高度（像素 / lattice）
+    width: 4096               # 計算域寬度（像素 / lattice）
+
   pinball:
-    center_x_ratio: 0.12
-    center_y_ratio: 0.5
-    radius_ratio: 0.05
-    spacing_factor: 2.5
+    center_x_ratio: 0.12      # 圓柱中心 X 位置（相對於 domain 寬度比例）
+    center_y_ratio: 0.5       # 圓柱中心 Y 位置（相對於 domain 高度比例）
+    radius_ratio: 0.05       # 圓柱半徑（相對於 domain 短邊比例）
+    spacing_factor: 2.5      # 多顆圓柱之間的間距倍率
+
   tube_bank:
-    start_x_ratio: 0.30
-    end_x_ratio: 0.55
-    radius_ratio: 0.03
-    num_rows: 5
-    num_cols: 6
-    jitter_amount: 3
+    start_x_ratio: 0.30      # 管束起始 X 位置比例
+    end_x_ratio: 0.55        # 管束結束 X 位置比例
+    radius_ratio: 0.03       # 管半徑比例
+    num_rows: 5              # 管束列數
+    num_cols: 6              # 管束行數
+    jitter_amount: 3         # 隨機擾動幅度（避免完全規則排列）
+
   step_urban:
-    step_start_ratio: 0.55
-    step_width_ratio: 0.05
-    step_height_ratio: 0.35
-    block_start_ratio: 0.70
-    block_end_ratio: 0.85
-    rect_count: 8
-    max_attempts: 200
-    min_distance: 64
-    max_blockage_ratio: 1.0
-    rotate_angle_max: 5
+    step_start_ratio: 0.55   # 階梯區起始 X 位置比例
+    step_width_ratio: 0.05   # 單一階梯寬度比例
+    step_height_ratio: 0.35# 階梯高度比例
+    block_start_ratio: 0.70# 建築區起始 X 位置比例
+    block_end_ratio: 0.85    # 建築區結束 X 位置比例
+    rect_count: 8            # 建築矩形數量
+    max_attempts: 200        # 嘗試生成建築的最大次數
+    min_distance: 64         # 建築物間最小距離（像素）
+    max_blockage_ratio: 1.0# 最大阻塞比例限制
+    rotate_angle_max: 5      # 建築物最大旋轉角度（度）
     rect_size:
-      min_w: 50
-      max_w: 200
-      min_h: 50
-      max_h: 200
+      min_w: 50              # 建築最小寬度
+      max_w: 200             # 建築最大寬度
+      min_h: 50              # 建築最小高度
+      max_h: 200             # 建築最大高度
+
   validation:
-    boundary_buffer: 10
+    boundary_buffer: 10      # 邊界緩衝距離，用於合法性檢查
+
   output:
-    invert_values: True
+    invert_values: True      # 是否反轉輸出 mask 的數值定義
 
 # ==========================================
-# 3. 物理與模擬控制 (Physics & Simulation)
+# 3. 物理常數與換算
+# ==========================================
+physical_constants:
+  kinematic_viscosity_air_m2_s: 1.5e-5    # 空氣動黏滯係數（m²/s，20°C）
+  inlet_velocity_ms: 5.0                  # 宏觀物理世界入口風速（m/s）
+
+# ==========================================
+# 4. 物理與模擬控制
 # ==========================================
 physics_control:
-  # 雷諾數列表 (循環使用)
-  re_list: [ 100, 200, 500, 800, 1000, 2000, 3000, 4000]
-
-  # 入口速度 U_LB
-  u_lb: 0.05
-
-  # 目標採樣率 (每物理秒存幾次)
-  saves_per_physical_second: 25
+  re_list: [100, 200, 500, 800, 1000, 2000, 3000, 4000]    # 雷諾數清單（批次循環使用）
+  u_lb: 0.05                                             # 格點單位入口速度 U_LB
+  saves_per_physical_second: 25                          # 每個物理秒儲存資料次數
 
 # ==========================================
-# 4. 基礎模擬模板 (Base Template)
+# 5. 基礎模擬模板
 # ==========================================
-# This section remains unchanged.
 template:
   simulation:
-    nx: 4096
-    ny: 1024
-    # nu, characteristic_length, name 會由腳本動態填入
-    max_steps: 1000000
-    warmup_steps: 2000
-    smagorinsky_constant: 0.2
-    ghost_moments_s: 1.2
-    # compute_step_size 會由腳本根據 interval 覆蓋
+    nx: 4096                  # LBM 計算格點 X 方向數量
+    ny: 1024                  # LBM 計算格點 Y 方向數量
+    max_steps: 3000        # 模擬最大時間步數 1000000
+    warmup_steps: 200        # 暖機步數（不輸出） 2000
+    ghost_moments_s: 1.2      # MRT ghost moments 參數
 
   outputs:
-    enable_profiling: False
+    enable_profiling: False   # 是否啟用效能分析
+
     gui:
-      enable: True
-      max_size: 1024
-      show_zone_overlay: True
-      gaussian_sigma: 1.0
-      # interval_steps 會由腳本覆蓋
+      enable: True            # 是否啟用即時 GUI 顯示
+      max_size: 1024          # GUI 顯示最大邊長
+      show_zone_overlay: True   # 是否顯示 domain zone 疊圖
+      gaussian_sigma: 1.0     # GUI 顯示用高斯模糊 sigma
 
     video:
-      enable: True
-      fps: 30
-      # filename, interval_steps 會由腳本覆蓋
+      enable: True            # 是否輸出影片
+      fps: 30                 # 影片幀率
 
     dataset:
-      enable: True
-      compression: "lzf"
-      save_resolution: 512
-      # folder, interval_steps 會由腳本覆蓋
+      enable: True            # 是否儲存 HDF5 資料集
+      compression: "lzf"      # HDF5 壓縮方式
+      save_resolution: 512    # 儲存解析度（下採樣）
 
   boundary_condition:
-    type: [0, 2, 1, 2] # W, E, S, N (0:Vel, 1:Out, 2:Wall)
-    # value 會由腳本根據 u_lb 動態填入
+    type: [0, 2, 1, 2]        # 邊界條件：W,E,S,N（0:速度, 1:出口, 2:牆面）
 
   mask:
-    enable: True
-    type: "png"
-    invert: False
-    # path 會由腳本填入
+    enable: True              # 是否啟用遮罩
+    type: "png"               # 遮罩檔案格式
+    invert: False             # 是否反轉遮罩值
 
   domain_zones:
-    sponge_y: 64
-    sponge_x: 128
-    buffer: 64
-    inlet_buffer: 128
+    sponge_y: 64              # Y 方向 sponge layer 厚度
+    sponge_x: 128             # X 方向 sponge layer 厚度
+    buffer: 64                # 邊界 buffer 區域
+    inlet_buffer: 128         # 入口專用 buffer 區域

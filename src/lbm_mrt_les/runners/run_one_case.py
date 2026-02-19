@@ -114,9 +114,17 @@ def main(
         metadata.update(loop_metadata)
         metadata["status"] = "Success"
         metadata["reason"] = "Completed successfully"
-        metadata["final_steps"] = max_steps
-        metadata["reynolds_number_physical"] = config["outputs"]["target_re"]
+        
+        # Add detailed lattice-level outputs for physical scaling
         metadata["reynolds_number_lattice_actual"] = solver.Re
+        metadata["l_char_lattice_px"] = config["simulation"]["characteristic_length"]
+        metadata["u_inlet_lattice_lu"] = config["boundary_condition"]["value"][0][0]
+        metadata["nu_lattice_lu"] = config["simulation"]["nu"]
+        metadata["nx"] = solver.nx
+        metadata["ny"] = solver.ny
+        metadata["total_steps_executed"] = max_steps
+
+        # File info
         metadata["h5_file"] = os.path.basename(h5_output_path) if h5_output_path else "N/A"
         metadata["video_file"] = os.path.basename(video_output_path) if video_output_path else "N/A"
 

@@ -1,6 +1,6 @@
-simulation: {nx: 4096, ny: 1024, max_steps: 1000000, warmup_steps: 2000, smagorinsky_constant: 0.0,
-  ghost_moments_s: 1.2, name: L204_0001, nu: 0.051, characteristic_length: 204.0,
-  compute_step_size: 163}
+simulation: {nx: 4096, ny: 1024, max_steps: 3000, warmup_steps: 200, ghost_moments_s: 1.2,
+  name: L204_0001, nu: 0.051, characteristic_length: 204.0, compute_step_size: 163,
+  smagorinsky_constant: 0.0}
 outputs:
   enable_profiling: false
   gui: {enable: true, max_size: 1024, show_zone_overlay: true, gaussian_sigma: 1.0,
@@ -19,3 +19,4 @@ boundary_condition:
   - *id001
 mask: {enable: true, type: png, invert: false, path: SimCases\Hyper-1\masks\L204_0001.png}
 domain_zones: {sponge_y: 64, sponge_x: 128, buffer: 64, inlet_buffer: 128}
+physical_constants: {kinematic_viscosity_air_m2_s: 1.5e-05, inlet_velocity_ms: 5.0}
