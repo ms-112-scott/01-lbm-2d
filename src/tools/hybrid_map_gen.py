@@ -14,7 +14,6 @@ def load_yaml(path):
         return yaml.safe_load(f)
 
 class HybridMapGenerator:
-    # (The class implementation remains unchanged)
     def __init__(self, config):
         self.H = config["domain"]["height"]
         self.W = config["domain"]["width"]
@@ -96,6 +95,7 @@ class HybridMapGenerator:
 
     def _generate_step_urban_section(self):
         cfg = self.config["step_urban"]
+        # 第一個特徵：初始的階梯方塊寬度
         step_x = int(self.W * cfg["step_start_ratio"])
         step_h = int(self.H * cfg["step_height_ratio"])
         step_w = int(self.W * cfg["step_width_ratio"])
@@ -107,6 +107,7 @@ class HybridMapGenerator:
             "max_x": int(self.W * cfg["block_end_ratio"]),
             "min_y": 0, "max_y": self.H
         }
+        
         placed_widths = []
         for _ in range(cfg["max_attempts"]):
             if len(placed_widths) >= cfg["rect_count"]: break
@@ -117,16 +118,26 @@ class HybridMapGenerator:
                self._check_blockage_ratio(box_points, cfg["max_blockage_ratio"]):
                 cv2.drawContours(self.grid, [box_points], 0, 1, -1)
                 placed_widths.append(w_val)
-        return np.mean(placed_widths) if placed_widths else 0.0
+                
+        # 【修改點】：取生成的隨機方塊與初始階梯方塊中的「最大值」
+        max_placed_w = np.max(placed_widths) if placed_widths else 0
+        max_feature_length = max(step_w, max_placed_w)
+        
+        return float(max_feature_length)
 
     def generate(self):
         self.reset()
         self._generate_pinball_section()
         self._generate_tube_bank_section()
-        avg_urban_width = self._generate_step_urban_section()
+        
+        # 【修改點】：獲取真正的最大特徵長度
+        max_feature_length = self._generate_step_urban_section()
+        
         buffer = self.config["validation"]["boundary_buffer"]
         self.grid[:, :buffer] = self.grid[:, -buffer:] = 0
-        return int(avg_urban_width / 20) * 20
+        
+        # 【修改點】：直接回傳浮點數最大寬度，移除 /20 * 20 的階梯化邏輯
+        return max_feature_length
 
     def save_map(self, filename):
         os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -142,7 +153,7 @@ if __name__ == "__main__":
         help="Path to the master config file."
     )
     parser.add_argument(
-        "-n", "--num_maps", type=int, default=6,
+        "-n", "--num_maps", type=int, default=8,
         help="Number of maps to generate."
     )
     args = parser.parse_args()
@@ -153,7 +164,6 @@ if __name__ == "__main__":
     re_list = master_config["physics_control"]["re_list"]
     
     project_name = master_config["settings"]["project_name"]
-    # MODIFIED: Output masks to SimCases/{project_name}/masks
     output_dir = os.path.join("SimCases", project_name, "masks")
     
     generator = HybridMapGenerator(map_gen_config)
@@ -163,14 +173,13 @@ if __name__ == "__main__":
         json.dump(map_gen_config, f, indent=4)
 
     for i in range(args.num_maps):
-        target_re = re_list[i % len(re_list)]
-        
-        print(f"Generating map {i+1}/{args.num_maps} (Target Re: {target_re})...")
+
         l_char = generator.generate()
         
-        filename = os.path.join(output_dir, f"Re{target_re}_L{l_char}_{i:04d}.png")
+        # 檔名保留整數以維持乾淨，但內部運算是精確的 float
+        filename = os.path.join(output_dir, f"L{int(l_char)}_{i:04d}.png")
         
         generator.save_map(filename)
-        print(f"  -> Characteristic Length (L): {l_char}")
+        print(f"  -> Characteristic Length (L): {l_char:.1f}")
 
     print(f"\n[Done] Generated {args.num_maps} maps in '{output_dir}'.")

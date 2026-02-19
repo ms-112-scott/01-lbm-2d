@@ -1,0 +1,21 @@
+simulation: {nx: 4096, ny: 1024, max_steps: 1000000, warmup_steps: 2000, smagorinsky_constant: 0.0,
+  ghost_moments_s: 1.2, name: L204_0002, nu: 0.0204, characteristic_length: 204.0,
+  compute_step_size: 163}
+outputs:
+  enable_profiling: false
+  gui: {enable: true, max_size: 1024, show_zone_overlay: true, gaussian_sigma: 1.0,
+    interval_steps: 163}
+  video: {enable: true, fps: 30, interval_steps: 163, filename: L204_0002.mp4}
+  dataset: {enable: true, compression: lzf, save_resolution: 512, interval_steps: 163}
+  project_name: Hyper-1
+  data_save_root: outputs\Hyper-1
+  target_re: 500
+boundary_condition:
+  type: [0, 2, 1, 2]
+  value:
+  - [0.05, 0.0]
+  - &id001 [0.0, 0.0]
+  - *id001
+  - *id001
+mask: {enable: true, type: png, invert: false, path: SimCases\Hyper-1\masks\L204_0002.png}
+domain_zones: {sponge_y: 64, sponge_x: 128, buffer: 64, inlet_buffer: 128}
