@@ -85,6 +85,7 @@ def main(
     print(f"    Mask:   {os.path.basename(mask_path)}")
     print(f"{'='*60}\n")
 
+    utils.force_clean_cache()
     metadata = {"status": "Failed", "reason": "Unknown error"}
     solver, viz, gui, recorder, writer = None, None, None, None, None
 

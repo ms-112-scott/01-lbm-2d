@@ -5,6 +5,7 @@ import re
 import glob
 import copy
 import argparse
+from pathlib import Path
 
 def load_yaml(path):
     """Loads a YAML configuration file."""
@@ -99,8 +100,9 @@ def main():
         steps_per_phys_sec = l_char / u_lb
         target_interval = max(1, int(steps_per_phys_sec / saves_per_phys_sec))
 
+
         run_params = {
-            "sim_name": f"Case{i:04d}_{filename_stem}",
+            "sim_name": Path(mask_path).name, # Use the cleaner mask base name as the simulation name
             "nu": nu, "l_char": l_char, "re": re_val, "u_lb": u_lb,
             "interval": target_interval, "mask_path": mask_path,
             "data_save_root": data_save_root, "project_name": project_name,
@@ -108,7 +110,7 @@ def main():
 
         final_config = generate_case_config(base_template, run_params)
         
-        config_filename = f"cfg_{filename_stem}.yaml"
+        config_filename = f"{filename_stem}.yaml"
         full_config_path = os.path.join(output_dir, config_filename)
 
         with open(full_config_path, "w") as f:

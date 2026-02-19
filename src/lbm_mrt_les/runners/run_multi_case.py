@@ -14,8 +14,8 @@ def setup_directories(base_path: str) -> Dict[str, str]:
     """Creates the standardized directory structure for a project."""
     paths = {
         "base": base_path,
-        "raw": os.path.join(base_path, "raw"),
-        "vis": os.path.join(base_path, "vis"),
+        "h5_data": os.path.join(base_path, "h5_data"),
+        "Video": os.path.join(base_path, "Video"),
         "plots": os.path.join(base_path, "plots"),
     }
     for path in paths.values():
@@ -23,6 +23,7 @@ def setup_directories(base_path: str) -> Dict[str, str]:
     return paths
 
 def run_batch_simulation():
+    
     parser = argparse.ArgumentParser(description="Multi-case batch runner for LBM simulations.")
     parser.add_argument(
         "--project_name",
@@ -35,6 +36,7 @@ def run_batch_simulation():
     # MODIFIED: All paths are now derived from the project_name within the 'SimCases' directory
     project_base_dir = os.path.join("SimCases", args.project_name)
     config_dir = os.path.join(project_base_dir, "configs")
+    
     mask_dir = os.path.join(project_base_dir, "masks") # New: define mask_dir here
 
     if not os.path.isdir(config_dir):
@@ -73,12 +75,9 @@ def run_batch_simulation():
 
         try:
             config = utils.load_config(full_config_path)
-            outputs_cfg = config.get("outputs", {})
             sim_cfg = config.get("simulation", {})
             mask_cfg = config.get("mask", {})
 
-            sim_name = sim_cfg.get("name", f"Case_{job_id:04d}")
-            target_re = outputs_cfg.get("target_re", 0)
             
             # MODIFIED: Get mask filename from the config and construct full path with the new mask_dir
             mask_filename = os.path.basename(mask_cfg.get("path", "")) # config_batch_gen now writes the full path, but we need to reconstruct for the new structure
@@ -91,13 +90,14 @@ def run_batch_simulation():
                  print(f"   >>> \033[91m[Error] Mask file not found: {mask_path}\033[0m")
                  continue
 
-            base_filename = f"{sim_name}_Re{target_re}"
-            h5_path = os.path.join(dir_paths["raw"], f"{base_filename}.h5")
-            video_path = os.path.join(dir_paths["vis"], f"{base_filename}.mp4")
+            base_filename = sim_cfg.get("name", {})
+
+            h5_path = os.path.join(dir_paths["h5_data"], f"{base_filename}.h5")
+            video_path = os.path.join(dir_paths["Video"], f"{base_filename}.mp4")
 
             case_metadata = run_one_case_main(full_config_path, mask_path, h5_path, video_path)
             
-            case_metadata["case_name"] = sim_name
+            case_metadata["case_name"] = base_filename
             case_metadata["config_file"] = cfg_file
             case_metadata["mask_file"] = os.path.basename(mask_path)
             all_cases_metadata.append(case_metadata)
@@ -128,4 +128,5 @@ def run_batch_simulation():
     print("All batch jobs finished.")
 
 if __name__ == "__main__":
+    utils.force_clean_cache()
     run_batch_simulation()
