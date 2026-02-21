@@ -112,21 +112,23 @@ def main(
 
         # 4. Collect metadata for summary
         metadata.update(loop_metadata)
-        metadata["status"] = "Success"
-        metadata["reason"] = "Completed successfully"
         
-        # Add detailed lattice-level outputs for physical scaling
-        metadata["reynolds_number_lattice_actual"] = solver.Re
-        metadata["l_char_lattice_px"] = config["simulation"]["characteristic_length"]
-        metadata["u_inlet_lattice_lu"] = config["boundary_condition"]["value"][0][0]
-        metadata["nu_lattice_lu"] = config["simulation"]["nu"]
-        metadata["nx"] = solver.nx
-        metadata["ny"] = solver.ny
-        metadata["total_steps_executed"] = max_steps
+        # If successful, add more detailed metadata for post-processing
+        if metadata.get("status") == "Success":
+            metadata["reason"] = "Completed successfully"
+            
+            # Add detailed lattice-level outputs for physical scaling
+            metadata["reynolds_number_lattice_actual"] = solver.Re
+            metadata["l_char_lattice_px"] = config["simulation"]["characteristic_length"]
+            metadata["u_inlet_lattice_lu"] = config["boundary_condition"]["value"][0][0]
+            metadata["nu_lattice_lu"] = config["simulation"]["nu"]
+            metadata["nx"] = solver.nx
+            metadata["ny"] = solver.ny
+            metadata["total_steps_executed"] = metadata.get("final_steps", 0)
 
-        # File info
-        metadata["h5_file"] = os.path.basename(h5_output_path) if h5_output_path else "N/A"
-        metadata["video_file"] = os.path.basename(video_output_path) if video_output_path else "N/A"
+            # File info
+            metadata["h5_file"] = os.path.basename(h5_output_path) if h5_output_path else "N/A"
+            metadata["video_file"] = os.path.basename(video_output_path) if video_output_path else "N/A"
 
     except Exception as e:
         print(f"\n[CRITICAL ERROR] Simulation Failed: {e}")
