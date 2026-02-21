@@ -2,71 +2,44 @@
     {
         "case_name": "L200_0000",
         "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.3475 exceeded stability threshold (0.25) at step 84960"
+        "reason": "Simulation failed: Velocity 0.2720 exceeded stability threshold (0.25) at step 87040"
     },
     {
         "case_name": "L200_0001",
         "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2544 exceeded stability threshold (0.25) at step 90880"
+        "reason": "Simulation failed: Velocity 0.2751 exceeded stability threshold (0.25) at step 90400"
     },
     {
         "case_name": "L200_0002",
         "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2525 exceeded stability threshold (0.25) at step 100000"
+        "reason": "Simulation failed: Velocity 0.2686 exceeded stability threshold (0.25) at step 121440"
     },
     {
         "case_name": "L200_0003",
         "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2539 exceeded stability threshold (0.25) at step 92160"
+        "reason": "Simulation failed: GUI closed by user"
     },
     {
         "case_name": "L200_0004",
         "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2506 exceeded stability threshold (0.25) at step 108320"
+        "reason": "Simulation failed: User Interrupted (Ctrl+C)"
     },
     {
         "case_name": "L200_0005",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2543 exceeded stability threshold (0.25) at step 92480"
-    },
-    {
-        "case_name": "L200_0006",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2536 exceeded stability threshold (0.25) at step 117920"
-    },
-    {
-        "case_name": "L200_0007",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2502 exceeded stability threshold (0.25) at step 145760"
-    },
-    {
-        "case_name": "L200_0008",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2990 exceeded stability threshold (0.25) at step 89600"
-    },
-    {
-        "case_name": "L200_0009",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2592 exceeded stability threshold (0.25) at step 82080"
-    },
-    {
-        "case_name": "L200_0010",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2801 exceeded stability threshold (0.25) at step 87040"
-    },
-    {
-        "case_name": "L200_0011",
-        "status": "Failed",
-        "reason": "unsupported operand type(s) for /: 'list' and 'float'"
-    },
-    {
-        "case_name": "L200_0012",
-        "status": "Failed",
-        "reason": "unsupported operand type(s) for /: 'list' and 'float'"
-    },
-    {
-        "case_name": "L200_0013",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2571 exceeded stability threshold (0.25) at step 84640"
+        "status": "Running",
+        "job_id": 6,
+        "parameters": {
+            "lattice": {
+                "target_re": 2000,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            }
+        },
+        "source_files": {
+            "config_file": "L200_0005_Re2000.yaml",
+            "mask_file": "L200_0005.png"
+        }
     }
 ]

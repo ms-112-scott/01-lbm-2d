@@ -80,6 +80,15 @@ class LBM2D_MRT_LES:
         # 視覺化參數
         self.viz_sigma = self.config["outputs"]["gui"]["gaussian_sigma"]
 
+        # ==========================================
+        # [Fix] Sponge Layer Parameters from Config
+        # ==========================================
+        zones = self.config.get("domain_zones", {})
+        self.sponge_w_x = zones.get("sponge_x", 128)      # Outlet Sponge
+        self.sponge_w_in = zones.get("inlet_buffer", 64)  # Inlet Sponge
+        self.sponge_w_y = zones.get("sponge_y", 40)       # Top/Bottom Sponge
+        self.sponge_strength = 2.0                        # Sponge Strength
+
     #  init 子函式: 記憶體配置 (Fields)
     def _init_fields(self, mask_data):
         # 巨觀量 (Macro-scopic)
@@ -267,32 +276,31 @@ class LBM2D_MRT_LES:
             # ==========================================
             # [修改] 5. Omni-directional Sponge Layer (全方位阻尼層)
             # ==========================================
-            # 參數設定 (可在此微調)
-            sponge_width_x = 200  # 出口阻尼層長度 (保持較長)
-            sponge_width_y = 40  # 上下阻尼層厚度 (建議 30~50 格)
-            sponge_strength = 2.0  # 阻尼強度 (越大越黏，吸收越快)
-
-            # A. 計算 X 方向阻尼 (Outlet)
+            # A. 計算 X 方向阻尼 (Outlet & Inlet)
             damping_x = 0.0
-            x_start_sponge = self.nx - sponge_width_x
-            if i > x_start_sponge:
-                # 歸一化座標 (0.0 ~ 1.0)
-                coord = (i - x_start_sponge) / sponge_width_x
-                damping_x = sponge_strength * (coord * coord)
+            
+            # Outlet Sponge (Right)
+            if i > (self.nx - self.sponge_w_x):
+                coord = (i - (self.nx - self.sponge_w_x)) / self.sponge_w_x
+                damping_x = self.sponge_strength * (coord * coord)
+            
+            # Inlet Sponge (Left) - Critical for Reflection Prevention
+            elif i < self.sponge_w_in:
+                coord = (self.sponge_w_in - i) / self.sponge_w_in
+                damping_x = self.sponge_strength * (coord * coord)
 
             # B. 計算 Y 方向阻尼 (Top & Bottom)
             damping_y = 0.0
             # 下邊界區域
-            if j < sponge_width_y:
-                coord = (sponge_width_y - j) / sponge_width_y
-                damping_y = sponge_strength * (coord * coord)
+            if j < self.sponge_w_y:
+                coord = (self.sponge_w_y - j) / self.sponge_w_y
+                damping_y = self.sponge_strength * (coord * coord)
             # 上邊界區域
-            elif j > (self.ny - sponge_width_y):
-                coord = (j - (self.ny - sponge_width_y)) / sponge_width_y
-                damping_y = sponge_strength * (coord * coord)
+            elif j > (self.ny - self.sponge_w_y):
+                coord = (j - (self.ny - self.sponge_w_y)) / self.sponge_w_y
+                damping_y = self.sponge_strength * (coord * coord)
 
             # C. 疊加阻尼 (取最大值)
-            # 使用 max 而不是直接相加，可以避免在角落處(右上/右下)黏滯性過大導致反射
             tau_eff += tm.max(damping_x, damping_y)
             # ==========================================
 
