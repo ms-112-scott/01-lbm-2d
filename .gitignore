@@ -58,8 +58,6 @@ data/
 # 6. 輸出結果與圖表 (Outputs & Visualization)
 # ===========================
 # 你的輸出資料夾
-output/
-outputs/
 results/
 data_output/
 
