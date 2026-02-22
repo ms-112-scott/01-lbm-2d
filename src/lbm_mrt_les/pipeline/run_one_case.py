@@ -117,11 +117,17 @@ def main(
         if metadata.get("status") == "Success":
             metadata["reason"] = "Completed successfully"
             
+            # Calculate actual Re based on measured max velocity at the end of simulation
+            measured_u = float(solver.get_max_velocity())
+            l_char = config["simulation"]["characteristic_length"]
+            nu = config["simulation"]["nu"]
+            actual_re = (measured_u * l_char) / nu if nu > 0 else float('inf')
+            
             # Add detailed lattice-level outputs for physical scaling
-            metadata["reynolds_number_lattice_actual"] = solver.Re
-            metadata["l_char_lattice_px"] = config["simulation"]["characteristic_length"]
-            metadata["u_inlet_lattice_lu"] = config["boundary_condition"]["value"][0][0]
-            metadata["nu_lattice_lu"] = config["simulation"]["nu"]
+            metadata["reynolds_number_lattice_actual"] = actual_re
+            metadata["l_char_lattice_px"] = l_char
+            metadata["u_inlet_lattice_lu"] = measured_u  # using max velocity
+            metadata["nu_lattice_lu"] = nu
             metadata["nx"] = solver.nx
             metadata["ny"] = solver.ny
             metadata["total_steps_executed"] = metadata.get("final_steps", 0)

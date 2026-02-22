@@ -20,7 +20,9 @@ def calculate_physical_params(config: Dict, lattice_metadata: Dict) -> Dict:
     L_lb = lattice_metadata.get("l_char_lattice_px", 0)
     
     # Extract physical constants defined in the master config
-    U_phys = phys_const.get("inlet_velocity_ms", 0)
+    U_phys_raw = phys_const.get("inlet_velocity_ms", 0)
+    # Handle the case where inlet_velocity_ms might be a list (as defined in master_config.yaml)
+    U_phys = U_phys_raw[0] if isinstance(U_phys_raw, list) and len(U_phys_raw) > 0 else U_phys_raw
     nu_phys = phys_const.get("kinematic_viscosity_air_m2_s", 0)
     
     # --- Calculate Conversion Scales ---

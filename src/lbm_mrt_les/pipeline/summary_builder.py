@@ -10,9 +10,11 @@ def build_summary_entry(config: Dict, lattice_metadata: Dict, physical_params: D
     
     # --- Format Lattice Inputs ---
     lat_in = {
-        "target_re": config.get("outputs", {}).get("target_re"),
+        "target_rho_in": config.get("outputs", {}).get("target_rho_in"),
+        "rho_in": config.get("simulation", {}).get("rho_in"),
+        "rho_out": config.get("simulation", {}).get("rho_out"),
         "characteristic_length_px": config.get("simulation", {}).get("characteristic_length"),
-        "inlet_velocity_lu": round(config.get("boundary_condition", {}).get("value", [[0,0]])[0][0], 4),
+        "inlet_velocity_lu": round(lattice_metadata.get("u_inlet_lattice_lu", 0.0), 6),
         "kinematic_viscosity_lu": round(config.get("simulation", {}).get("nu"), 6),
         "resolution_px": [config.get("simulation", {}).get("nx"), config.get("simulation", {}).get("ny")]
     }
@@ -27,13 +29,13 @@ def build_summary_entry(config: Dict, lattice_metadata: Dict, physical_params: D
     phys_p = physical_params
     phys_scaled = {
         "reynolds_number_calculated": round(phys_p.get("reynolds_number_calculated", 0), 2),
-        "characteristic_length_m": round(phys_p.get("characteristic_length_m", 0), 4),
+        "characteristic_length_m": f'{phys_p.get("characteristic_length_m", 0):.4e}',
         "inlet_velocity_ms": round(phys_p.get("inlet_velocity_ms", 0), 2),
         "kinematic_viscosity_air_m2_s": f'{phys_p.get("kinematic_viscosity_air_m2_s", 0):.2e}',
         "cell_size_m": f'{phys_p.get("cell_size_m", 0):.4e}',
         "time_step_s": f'{phys_p.get("time_step_s", 0):.4e}',
-        "steps_per_physical_second": round(phys_p.get("steps_per_physical_second", 0), 1),
-        "total_simulation_time_s": round(phys_p.get("total_simulation_time_s", 0), 2),
+        "steps_per_physical_second": f'{phys_p.get("steps_per_physical_second", 0):.4e}',
+        "total_simulation_time_s": f'{phys_p.get("total_simulation_time_s", 0):.4e}',
     }
     
     summary_entry = {

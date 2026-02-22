@@ -1,45 +1,527 @@
 [
     {
         "case_name": "L200_0000",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2720 exceeded stability threshold (0.25) at step 87040"
-    },
-    {
-        "case_name": "L200_0001",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2751 exceeded stability threshold (0.25) at step 90400"
-    },
-    {
-        "case_name": "L200_0002",
-        "status": "Failed",
-        "reason": "Simulation failed: Velocity 0.2686 exceeded stability threshold (0.25) at step 121440"
-    },
-    {
-        "case_name": "L200_0003",
-        "status": "Failed",
-        "reason": "Simulation failed: GUI closed by user"
-    },
-    {
-        "case_name": "L200_0004",
-        "status": "Failed",
-        "reason": "Simulation failed: User Interrupted (Ctrl+C)"
-    },
-    {
-        "case_name": "L200_0005",
-        "status": "Running",
-        "job_id": 6,
+        "status": "Success",
         "parameters": {
-            "lattice": {
-                "target_re": 2000,
+            "lattice_inputs": {
+                "target_rho_in": 1.005,
+                "rho_in": 1.005,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.068879,
+                "kinematic_viscosity_lu": 0.01,
                 "resolution_px": [
                     4096,
                     1024
                 ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 1377.58,
+                "total_steps_executed": 409722
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 1377.58,
+                "characteristic_length_m": "2.0664e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "1.0332e-04",
+                "time_step_s": "7.1164e-06",
+                "steps_per_physical_second": "1.4052e+05",
+                "total_simulation_time_s": "2.9158e+00"
             }
         },
+        "run_summary": {
+            "h5_file": "Case01_L200_0000_rho1.005_out1.0.h5",
+            "video_file": "Case01_L200_0000_rho1.005_out1.0.mp4"
+        },
         "source_files": {
-            "config_file": "L200_0005_Re2000.yaml",
+            "config_file": "L200_0000_Rho1-005.yaml",
+            "mask_file": "L200_0000.png"
+        }
+    },
+    {
+        "case_name": "L200_0001",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.015,
+                "rho_in": 1.015,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.151524,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 3030.47,
+                "total_steps_executed": 409600
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 3030.47,
+                "characteristic_length_m": "4.5457e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "2.2729e-04",
+                "time_step_s": "3.4439e-05",
+                "steps_per_physical_second": "2.9037e+04",
+                "total_simulation_time_s": "1.4106e+01"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case02_L200_0001_rho1.015_out1.0.h5",
+            "video_file": "Case02_L200_0001_rho1.015_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0001_Rho1-015.yaml",
+            "mask_file": "L200_0001.png"
+        }
+    },
+    {
+        "case_name": "L200_0002",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.001,
+                "rho_in": 1.001,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.025677,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 513.54,
+                "total_steps_executed": 409734
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 513.54,
+                "characteristic_length_m": "7.7031e-03",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "3.8516e-05",
+                "time_step_s": "9.8897e-07",
+                "steps_per_physical_second": "1.0112e+06",
+                "total_simulation_time_s": "4.0521e-01"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case03_L200_0002_rho1.001_out1.0.h5",
+            "video_file": "Case03_L200_0002_rho1.001_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0002_Rho1-001.yaml",
+            "mask_file": "L200_0002.png"
+        }
+    },
+    {
+        "case_name": "L200_0003",
+        "status": "Failed",
+        "reason": "Simulation failed: Velocity 0.2552 exceeded stability threshold (0.25) at step 366390"
+    },
+    {
+        "case_name": "L200_0004",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.015,
+                "rho_in": 1.015,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.139328,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 2786.56,
+                "total_steps_executed": 409600
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 2786.56,
+                "characteristic_length_m": "4.1798e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "2.0899e-04",
+                "time_step_s": "2.9119e-05",
+                "steps_per_physical_second": "3.4342e+04",
+                "total_simulation_time_s": "1.1927e+01"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case05_L200_0004_rho1.015_out1.0.h5",
+            "video_file": "Case05_L200_0004_rho1.015_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0004_Rho1-015.yaml",
+            "mask_file": "L200_0004.png"
+        }
+    },
+    {
+        "case_name": "L200_0005",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.02,
+                "rho_in": 1.02,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.124039,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 2480.79,
+                "total_steps_executed": 409653
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 2480.79,
+                "characteristic_length_m": "3.7212e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "1.8606e-04",
+                "time_step_s": "2.3079e-05",
+                "steps_per_physical_second": "4.3330e+04",
+                "total_simulation_time_s": "9.4542e+00"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case06_L200_0005_rho1.02_out1.0.h5",
+            "video_file": "Case06_L200_0005_rho1.02_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0005_Rho1-020.yaml",
             "mask_file": "L200_0005.png"
+        }
+    },
+    {
+        "case_name": "L200_0006",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.002,
+                "rho_in": 1.002,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.043066,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 861.32,
+                "total_steps_executed": 409749
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 861.32,
+                "characteristic_length_m": "1.2920e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "6.4599e-05",
+                "time_step_s": "2.7821e-06",
+                "steps_per_physical_second": "3.5945e+05",
+                "total_simulation_time_s": "1.1399e+00"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case07_L200_0006_rho1.002_out1.0.h5",
+            "video_file": "Case07_L200_0006_rho1.002_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0006_Rho1-002.yaml",
+            "mask_file": "L200_0006.png"
+        }
+    },
+    {
+        "case_name": "L200_0007",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.015,
+                "rho_in": 1.015,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.141353,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 2827.06,
+                "total_steps_executed": 409600
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 2827.06,
+                "characteristic_length_m": "4.2406e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "2.1203e-04",
+                "time_step_s": "2.9971e-05",
+                "steps_per_physical_second": "3.3366e+04",
+                "total_simulation_time_s": "1.2276e+01"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case08_L200_0007_rho1.015_out1.0.h5",
+            "video_file": "Case08_L200_0007_rho1.015_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0007_Rho1-015.yaml",
+            "mask_file": "L200_0007.png"
+        }
+    },
+    {
+        "case_name": "L200_0008",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.001,
+                "rho_in": 1.001,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.024184,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 483.68,
+                "total_steps_executed": 409734
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 483.68,
+                "characteristic_length_m": "7.2552e-03",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "3.6276e-05",
+                "time_step_s": "8.7731e-07",
+                "steps_per_physical_second": "1.1399e+06",
+                "total_simulation_time_s": "3.5946e-01"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case09_L200_0008_rho1.001_out1.0.h5",
+            "video_file": "Case09_L200_0008_rho1.001_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0008_Rho1-001.yaml",
+            "mask_file": "L200_0008.png"
+        }
+    },
+    {
+        "case_name": "L200_0009",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.005,
+                "rho_in": 1.005,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.069667,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 1393.34,
+                "total_steps_executed": 409722
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 1393.34,
+                "characteristic_length_m": "2.0900e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "1.0450e-04",
+                "time_step_s": "7.2802e-06",
+                "steps_per_physical_second": "1.3736e+05",
+                "total_simulation_time_s": "2.9829e+00"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case10_L200_0009_rho1.005_out1.0.h5",
+            "video_file": "Case10_L200_0009_rho1.005_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0009_Rho1-005.yaml",
+            "mask_file": "L200_0009.png"
+        }
+    },
+    {
+        "case_name": "L200_0010",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.003,
+                "rho_in": 1.003,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.052016,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 1040.32,
+                "total_steps_executed": 409756
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 1040.32,
+                "characteristic_length_m": "1.5605e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "7.8024e-05",
+                "time_step_s": "4.0585e-06",
+                "steps_per_physical_second": "2.4640e+05",
+                "total_simulation_time_s": "1.6630e+00"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case11_L200_0010_rho1.003_out1.0.h5",
+            "video_file": "Case11_L200_0010_rho1.003_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0010_Rho1-003.yaml",
+            "mask_file": "L200_0010.png"
+        }
+    },
+    {
+        "case_name": "L200_0011",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.01,
+                "rho_in": 1.01,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.145716,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 2914.33,
+                "total_steps_executed": 409631
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 2914.33,
+                "characteristic_length_m": "4.3715e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "2.1857e-04",
+                "time_step_s": "3.1850e-05",
+                "steps_per_physical_second": "3.1397e+04",
+                "total_simulation_time_s": "1.3047e+01"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case12_L200_0011_rho1.01_out1.0.h5",
+            "video_file": "Case12_L200_0011_rho1.01_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0011_Rho1-010.yaml",
+            "mask_file": "L200_0011.png"
+        }
+    },
+    {
+        "case_name": "L200_0012",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.02,
+                "rho_in": 1.02,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.197931,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 3958.62,
+                "total_steps_executed": 409653
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 3958.62,
+                "characteristic_length_m": "5.9379e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "2.9690e-04",
+                "time_step_s": "5.8765e-05",
+                "steps_per_physical_second": "1.7017e+04",
+                "total_simulation_time_s": "2.4073e+01"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case13_L200_0012_rho1.02_out1.0.h5",
+            "video_file": "Case13_L200_0012_rho1.02_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0012_Rho1-020.yaml",
+            "mask_file": "L200_0012.png"
+        }
+    },
+    {
+        "case_name": "L200_0013",
+        "status": "Success",
+        "parameters": {
+            "lattice_inputs": {
+                "target_rho_in": 1.02,
+                "rho_in": 1.02,
+                "rho_out": 1.0,
+                "characteristic_length_px": 200.0,
+                "inlet_velocity_lu": 0.176776,
+                "kinematic_viscosity_lu": 0.01,
+                "resolution_px": [
+                    4096,
+                    1024
+                ]
+            },
+            "simulation_outputs": {
+                "actual_reynolds_number": 3535.53,
+                "total_steps_executed": 409653
+            },
+            "physical_scaled": {
+                "reynolds_number_calculated": 3535.53,
+                "characteristic_length_m": "5.3033e-02",
+                "inlet_velocity_ms": 1.0,
+                "kinematic_viscosity_air_m2_s": "1.50e-05",
+                "cell_size_m": "2.6516e-04",
+                "time_step_s": "4.6875e-05",
+                "steps_per_physical_second": "2.1333e+04",
+                "total_simulation_time_s": "1.9202e+01"
+            }
+        },
+        "run_summary": {
+            "h5_file": "Case14_L200_0013_rho1.02_out1.0.h5",
+            "video_file": "Case14_L200_0013_rho1.02_out1.0.mp4"
+        },
+        "source_files": {
+            "config_file": "L200_0013_Rho1-020.yaml",
+            "mask_file": "L200_0013.png"
         }
     }
 ]

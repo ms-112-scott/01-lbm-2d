@@ -19,13 +19,14 @@ def execute_case(full_config_path: str, project_paths: Dict, output_dirs: Dict, 
         # --- 1. Extract info and construct paths ---
         mask_path_from_cfg = config.get("mask", {}).get("path")
         sim_name = config.get("simulation", {}).get("name")
-        target_re = config.get("outputs", {}).get("target_re")
+        rho_in = config.get("simulation", {}).get("rho_in")
+        rho_out = config.get("simulation", {}).get("rho_out")
         
         mask_path = os.path.join(project_paths["masks"], os.path.basename(mask_path_from_cfg))
         if not os.path.exists(mask_path):
             raise FileNotFoundError(f"Mask file not found: {mask_path}")
 
-        base_filename = f"Case{job_id:02d}_{sim_name}_Re{target_re}"
+        base_filename = f"Case{job_id:02d}_{sim_name}_rho{rho_in}_out{rho_out}"
         h5_path = os.path.join(output_dirs["raw"], f"{base_filename}.h5")
         video_path = os.path.join(output_dirs["vis"], f"{base_filename}.mp4")
 

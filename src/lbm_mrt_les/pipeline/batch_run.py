@@ -50,7 +50,6 @@ def main():
         try:
             config = case_executor.utils.load_config(full_config_path)
             sim_name = config.get("simulation", {}).get("name", cfg_file)
-            target_re = config.get("outputs", {}).get("target_re", "Unknown")
             nx = config.get("simulation", {}).get("nx")
             ny = config.get("simulation", {}).get("ny")
             
@@ -61,7 +60,6 @@ def main():
                 "job_id": job_id,
                 "parameters": {
                     "lattice": {
-                        "target_re": target_re,
                         "resolution_px": [nx, ny]
                     }
                 },

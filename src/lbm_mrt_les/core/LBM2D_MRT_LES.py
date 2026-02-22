@@ -50,24 +50,23 @@ class LBM2D_MRT_LES:
         # 1. 特徵長度
         self.characteristic_length = sim_cfg["characteristic_length"]
 
-        # 2. 入口速度 (u_inlet)
-        # 從 Boundary Condition 設定中提取，假設第一個 Value 為入口速度
-        # 格式通常為 [[u_x, u_y], ...]
+        # 2. 壓力邊界設定 (rho_in, rho_out)
+        self.rho_in_target = sim_cfg["rho_in"]
+        self.rho_out_target = sim_cfg["rho_out"]
+
+        # 3. 入口速度 (u_inlet) - 暫時保留供相容，但實際上入口速度將由模擬決定
         bc_values = self.config["boundary_condition"]["value"]
         self.u_inlet = np.array(bc_values[0], dtype=np.float32)
-
-        # 計算特徵速度 (Scalar)
         u_char = np.linalg.norm(self.u_inlet)
 
-        # 3. 計算雷諾數 (Reynolds Number)
-        # Re = (U * L) / nu
+        # 4. 初始雷諾數預估 (執行中會改變)
         if self.nu > 0:
             self.Re = (u_char * self.characteristic_length) / self.nu
         else:
             self.Re = float("inf")
 
         print(
-            f"[Solver] Initialized: Re={self.Re:.2f}, U_char={u_char:.4f}, L={self.characteristic_length}"
+            f"[Solver] Initialized: target rho_in={self.rho_in_target}, rho_out={self.rho_out_target}, Initial Re est.={self.Re:.2f}"
         )
         # ==========================================
 
@@ -83,11 +82,11 @@ class LBM2D_MRT_LES:
         # ==========================================
         # [Fix] Sponge Layer Parameters from Config
         # ==========================================
-        zones = self.config.get("domain_zones", {})
-        self.sponge_w_x = zones.get("sponge_x", 128)      # Outlet Sponge
-        self.sponge_w_in = zones.get("inlet_buffer", 64)  # Inlet Sponge
-        self.sponge_w_y = zones.get("sponge_y", 40)       # Top/Bottom Sponge
-        self.sponge_strength = 2.0                        # Sponge Strength
+        zones = self.config["domain_zones"]
+        self.sponge_w_x = zones["sponge_x"]       # Outlet Sponge
+        self.sponge_w_in = zones["inlet_buffer"]  # Inlet Sponge
+        self.sponge_w_y = zones["sponge_y"]       # Top/Bottom Sponge
+        self.sponge_strength = 2.0                # Sponge Strength
 
     #  init 子函式: 記憶體配置 (Fields)
     def _init_fields(self, mask_data):
@@ -362,18 +361,68 @@ class LBM2D_MRT_LES:
     @ti.func
     def apply_bc_core(self, outer, dr, ibc, jbc, inb, jnb, ramp: float):
         if outer == 1:
-            if self.bc_type[dr] == 0:  # Dirichlet (Fixed Velocity)
-                # [修正重點] DFG 驗證專用：如果是左側入口 (ibc == 0)，強制使用拋物線
+            if self.bc_type[dr] == 0:  # Inlet (Zou-He Pressure)
                 if ibc == 0:
-                    u_max = self.bc_value[dr][0]  # 取設定檔中的 X 分量作為最大速度
-                    u_parabolic = self.get_parabolic_inlet_velocity(jbc, u_max, self.ny)
-                    self.vel[ibc, jbc] = tm.vec2(u_parabolic, 0.0) * ramp
+                    # Zou-He Pressure Boundary at West
+                    rho_in = self.rho_in_target
+                    rho_current = 1.0 + (rho_in - 1.0) * ramp
+                    
+                    f0 = self.f_old[inb, jnb][0]
+                    f2 = self.f_old[inb, jnb][2]
+                    f3 = self.f_old[inb, jnb][3]
+                    f4 = self.f_old[inb, jnb][4]
+                    f6 = self.f_old[inb, jnb][6]
+                    f7 = self.f_old[inb, jnb][7]
+                    
+                    ux = 1.0 - (f0 + f2 + f4 + 2.0 * (f3 + f6 + f7)) / rho_current
+                    uy = 0.0
+                    
+                    f1 = f3 + (2.0 / 3.0) * rho_current * ux
+                    f5 = f7 - 0.5 * (f2 - f4) + (1.0 / 6.0) * rho_current * ux
+                    f8 = f6 + 0.5 * (f2 - f4) + (1.0 / 6.0) * rho_current * ux
+                    
+                    self.rho[ibc, jbc] = rho_current
+                    self.vel[ibc, jbc] = tm.vec2(ux, uy)
+                    
+                    self.f_old[ibc, jbc] = self.f_eq(ibc, jbc)
+                    self.f_old[ibc, jbc][1] = f1
+                    self.f_old[ibc, jbc][5] = f5
+                    self.f_old[ibc, jbc][8] = f8
                 else:
-                    # 其他固壁 (上下) 維持 0 速度
                     self.vel[ibc, jbc] = self.bc_value[dr] * ramp
+                    self.rho[ibc, jbc] = self.rho[inb, jnb]
+                    self.f_old[ibc, jbc] = self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
 
-            elif self.bc_type[dr] == 1:  # Neumann (Outlet)
-                self.vel[ibc, jbc] = self.vel[inb, jnb]
+            elif self.bc_type[dr] == 1:  # Outlet (Zou-He Pressure)
+                if ibc == self.nx - 1:
+                    # Zou-He Pressure Boundary at East
+                    rho_out = self.rho_out_target
+                    
+                    f0 = self.f_old[inb, jnb][0]
+                    f1 = self.f_old[inb, jnb][1]
+                    f2 = self.f_old[inb, jnb][2]
+                    f4 = self.f_old[inb, jnb][4]
+                    f5 = self.f_old[inb, jnb][5]
+                    f8 = self.f_old[inb, jnb][8]
+                    
+                    ux = -1.0 + (f0 + f2 + f4 + 2.0 * (f1 + f5 + f8)) / rho_out
+                    uy = 0.0
+                    
+                    f3 = f1 - (2.0 / 3.0) * rho_out * ux
+                    f6 = f8 - 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
+                    f7 = f5 + 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
+                    
+                    self.rho[ibc, jbc] = rho_out
+                    self.vel[ibc, jbc] = tm.vec2(ux, uy)
+                    
+                    self.f_old[ibc, jbc] = self.f_eq(ibc, jbc)
+                    self.f_old[ibc, jbc][3] = f3
+                    self.f_old[ibc, jbc][6] = f6
+                    self.f_old[ibc, jbc][7] = f7
+                else:
+                    self.vel[ibc, jbc] = self.vel[inb, jnb]
+                    self.rho[ibc, jbc] = self.rho[inb, jnb]
+                    self.f_old[ibc, jbc] = self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
 
             elif self.bc_type[dr] == 2:  # Free-Slip (Symmetry / Specular)
                 # 邏輯：切向速度照抄鄰居 (Free)，法向速度設為 0 (Wall)
@@ -381,26 +430,16 @@ class LBM2D_MRT_LES:
                 # 判斷牆壁方向：
                 # 如果 Ghost Node 和 Neighbor Node 的 X 座標相同 (ibc == inb)，代表是上下牆壁
                 if ibc == inb:
-                    self.vel[ibc, jbc][0] = self.vel[inb, jnb][
-                        0
-                    ]  # u_x (切向): 保留流體速度
+                    self.vel[ibc, jbc][0] = self.vel[inb, jnb][0]  # u_x (切向): 保留流體速度
                     self.vel[ibc, jbc][1] = 0.0  # u_y (法向): 撞牆歸零
 
                 # 否則就是左右牆壁 (jbc == jnb)
                 else:
                     self.vel[ibc, jbc][0] = 0.0  # u_x (法向): 撞牆歸零
-                    self.vel[ibc, jbc][1] = self.vel[inb, jnb][
-                        1
-                    ]  # u_y (切向): 保留流體速度
-
-        # --- 共同處理 (Extrapolation Scheme) ---
-        # 密度設為與內部相同 (壓力梯度為 0)
-        self.rho[ibc, jbc] = self.rho[inb, jnb]
-
-        # 利用修正後的 Ghost Velocity 計算平衡態，並疊加非平衡部分
-        self.f_old[ibc, jbc] = (
-            self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
-        )
+                    self.vel[ibc, jbc][1] = self.vel[inb, jnb][1]  # u_y (切向): 保留流體速度
+                
+                self.rho[ibc, jbc] = self.rho[inb, jnb]
+                self.f_old[ibc, jbc] = self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
 
     def run_step(self, steps=1):
         """

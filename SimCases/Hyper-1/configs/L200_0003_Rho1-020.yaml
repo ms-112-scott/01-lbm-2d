@@ -1,15 +1,15 @@
 simulation: {nx: 4096, ny: 1024, max_steps: 1000000, ghost_moments_s: 1.2, name: L200_0003,
-  nu: 0.003333, characteristic_length: 200.0, compute_step_size: 160, warmup_steps: 81920,
-  smagorinsky_constant: 0.2}
+  nu: 0.01, characteristic_length: 200.0, rho_in: 1.02, rho_out: 1.0, compute_step_size: 69,
+  warmup_steps: 35472, smagorinsky_constant: 0.2}
 outputs:
   enable_profiling: false
   gui: {enable: true, max_size: 1024, show_zone_overlay: true, gaussian_sigma: 1.0,
-    interval_steps: 160}
-  video: {enable: true, fps: 30, interval_steps: 160, filename: L200_0003.mp4}
-  dataset: {enable: true, compression: lzf, save_resolution: 512, interval_steps: 160}
+    interval_steps: 69}
+  video: {enable: true, fps: 30, interval_steps: 69, filename: L200_0003.mp4}
+  dataset: {enable: true, compression: lzf, save_resolution: 512, interval_steps: 69}
   project_name: Hyper-1
   data_save_root: outputs\Hyper-1
-  target_re: 3000
+  target_rho_in: 1.02
 boundary_condition:
   type: [0, 2, 1, 2]
   value:
