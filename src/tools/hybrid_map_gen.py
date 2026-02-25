@@ -1,5 +1,4 @@
 import sys
-
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -8,6 +7,8 @@ import cv2
 import yaml
 import argparse
 from config_utils import get_sampled_value
+from map_gen.shapes import add_circle, add_rotated_rect, add_triangle
+from map_gen.validators import check_sdf_validity, check_blockage_ratio
 
 
 def load_yaml(path):
@@ -27,49 +28,73 @@ class HybridMapGenerator:
     def reset(self):
         self.grid.fill(0)
 
-    def _add_cylinder(self, cx, cy, r):
-        y, x = np.ogrid[: self.H, : self.W]
-        mask = (x - cx) ** 2 + (y - cy) ** 2 <= r**2
-        self.grid[mask] = 1
-
-    def _add_box(self, x, y, w, h):
-        y1, y2 = max(0, y), min(self.H, y + h)
-        x1, x2 = max(0, x), min(self.W, x + w)
-        self.grid[y1:y2, x1:x2] = 1
-
     def _generate_pinball_section(self):
         cfg = self.config["pinball"]
+        shape_type = get_sampled_value(cfg["shape"])
         center_x = int(self.W * get_sampled_value(cfg["center_x_ratio"]))
         center_y = int(self.H * get_sampled_value(cfg["center_y_ratio"]))
-        r = int(self.H * get_sampled_value(cfg["radius_ratio"]))
-        spacing = int(r * get_sampled_value(cfg["spacing_factor"]))
-        self._add_cylinder(center_x - spacing, center_y, r)
-        self._add_cylinder(center_x + spacing, center_y + spacing, r)
-        self._add_cylinder(center_x + spacing, center_y - spacing, r)
+        size = int(self.H * get_sampled_value(cfg["size_ratio"]))
+        spacing = int(size * get_sampled_value(cfg["spacing_factor"]))
+
+        positions = [
+            (center_x - spacing, center_y),
+            (center_x + spacing, center_y + spacing),
+            (center_x + spacing, center_y - spacing),
+        ]
+
+        for cx, cy in positions:
+            if shape_type == "circle":
+                add_circle(self.grid, cx, cy, size)
+            else:
+                angle = get_sampled_value(cfg["rotation_angle"])
+                if shape_type == "square":
+                    side_length = size * 2
+                    add_rotated_rect(self.grid, cx, cy, side_length, side_length, angle)
+                elif shape_type == "triangle":
+                    orientation = get_sampled_value(cfg["triangle_orientation"])
+                    add_triangle(self.grid, cx, cy, size, angle, orientation)
 
     def _generate_tube_bank_section(self):
         cfg = self.config["tube_bank"]
+        shape_type = get_sampled_value(cfg["shape"])
+        layout_type = get_sampled_value(cfg["layout"])
         start_x = int(self.W * get_sampled_value(cfg["start_x_ratio"]))
         end_x = int(self.W * get_sampled_value(cfg["end_x_ratio"]))
-        r = int(self.H * get_sampled_value(cfg["radius_ratio"]))
+        size = int(self.H * get_sampled_value(cfg["size_ratio"]))
         cols = get_sampled_value(cfg["num_cols"])
         rows = get_sampled_value(cfg["num_rows"])
-        col_spacing = (end_x - start_x) // cols
-        row_spacing = self.H // (rows + 1)
-        jitter_range = cfg.get("jitter_range", [0, 0])
+        col_spacing = (end_x - start_x) // cols if cols > 0 else 0
+        row_spacing = self.H // (rows + 1) if rows > 0 else 0
+        jitter = cfg.get("jitter_amount", [0, 0])
 
         for c in range(cols):
-            offset_y = (row_spacing // 2) if (c % 2 == 1) else 0
+            offset_y = 0
+            if layout_type == "staggered" and c % 2 == 1:
+                offset_y = row_spacing // 2
+            
             for r_idx in range(rows):
                 cx = start_x + c * col_spacing
                 cy = row_spacing * (r_idx + 1) + offset_y
-                jx = get_sampled_value(jitter_range)
-                jy = get_sampled_value(jitter_range)
-                if r < cy < self.H - r:
-                    self._add_cylinder(cx + jx, cy + jy, r)
+                jx = get_sampled_value(jitter)
+                jy = get_sampled_value(jitter)
+                
+                final_cx, final_cy = cx + jx, cy + jy
+                
+                if not (size < final_cy < self.H - size):
+                    continue
+
+                if shape_type == "circle":
+                    add_circle(self.grid, final_cx, final_cy, size)
+                else:
+                    angle = get_sampled_value(cfg["rotation_angle"])
+                    if shape_type == "square":
+                        side_length = size * 2
+                        add_rotated_rect(self.grid, final_cx, final_cy, side_length, side_length, angle)
+                    elif shape_type == "triangle":
+                        orientation = get_sampled_value(cfg["triangle_orientation"])
+                        add_triangle(self.grid, final_cx, final_cy, size, angle, orientation)
 
     def _get_random_rotated_rect(self, bounds, size_cfg, angle_range):
-        # Using a simple diagonal for margin calculation
         max_w = size_cfg["w"][1] if isinstance(size_cfg["w"], list) else size_cfg["w"]
         max_h = size_cfg["h"][1] if isinstance(size_cfg["h"], list) else size_cfg["h"]
         max_diag = np.sqrt(max_w**2 + max_h**2)
@@ -90,28 +115,14 @@ class HybridMapGenerator:
         box = cv2.boxPoints(rect_def)
         return np.int64(box), w
 
-    def _check_sdf_validity(self, new_box, min_dist):
-        if np.sum(self.grid) == 0: return True
-        inv_grid = (1 - self.grid).astype(np.uint8)
-        sdf = cv2.distanceTransform(inv_grid, cv2.DIST_L2, 5)
-        new_mask = np.zeros_like(self.grid)
-        cv2.drawContours(new_mask, [new_box], 0, 1, -1)
-        covered_sdf = sdf[new_mask == 1]
-        return len(covered_sdf) == 0 or np.min(covered_sdf) >= min_dist
-
-    def _check_blockage_ratio(self, new_box, max_ratio):
-        temp_grid = self.grid.copy()
-        cv2.drawContours(temp_grid, [new_box], 0, 1, -1)
-        blocked_height = np.sum(np.max(temp_grid, axis=1))
-        return (blocked_height / self.H) <= max_ratio
-
     def _generate_step_urban_section(self):
         cfg = self.config["step_urban"]
-        # 第一個特徵：初始的階梯方塊寬度
         step_x = int(self.W * get_sampled_value(cfg["step_start_ratio"]))
         step_h = int(self.H * get_sampled_value(cfg["step_height_ratio"]))
         step_w = int(self.W * get_sampled_value(cfg["step_width_ratio"]))
-        self._add_box(step_x, 0, step_w, step_h)
+        # Use the helper for drawing a simple box (unrotated rectangle)
+        add_rotated_rect(self.grid, step_x + step_w / 2, step_h / 2, step_w, step_h, 0)
+
 
         block_start_x = int(self.W * get_sampled_value(cfg["block_start_ratio"]))
         urban_bounds = {
@@ -134,12 +145,11 @@ class HybridMapGenerator:
             min_dist = get_sampled_value(cfg["min_distance"])
             max_blockage = get_sampled_value(cfg["max_blockage_ratio"])
 
-            if self._check_sdf_validity(box_points, min_dist) and \
-               self._check_blockage_ratio(box_points, max_blockage):
+            if check_sdf_validity(self.grid, box_points, min_dist) and \
+               check_blockage_ratio(self.grid, box_points, max_blockage):
                 cv2.drawContours(self.grid, [box_points], 0, 1, -1)
                 placed_widths.append(w_val)
                 
-        # 【修改點】：取生成的隨機方塊與初始階梯方塊中的「最大值」
         max_placed_w = np.max(placed_widths) if placed_widths else 0
         max_feature_length = max(step_w, max_placed_w)
         return float(max_feature_length)
@@ -149,15 +159,11 @@ class HybridMapGenerator:
         self._generate_pinball_section()
         self._generate_tube_bank_section()
         
-        # 【修改點】：獲取真正的最大特徵長度
         max_feature_length = self._generate_step_urban_section()
         
         buffer = self.config["validation"]["boundary_buffer"]
         self.grid[:, :buffer] = self.grid[:, -buffer:] = 0
         
-        # 【修改點】：直接回傳浮點數最大寬度，移除 /20 * 20 的階梯化邏輯
-        base_factor = 50
-        max_feature_length = int(max_feature_length/base_factor) * base_factor
         return max_feature_length
 
     def save_map(self, filename):
@@ -178,7 +184,7 @@ if __name__ == "__main__":
     master_config = load_yaml(args.config)
     map_gen_config = master_config["map_generator"]
     
-    re_list = master_config["physics_control"]["re_list"]
+    rho_in_list = master_config["physics_control"]["rho_in_list"]
     
     project_name = master_config["settings"]["project_name"]
     output_dir = os.path.join("SimCases", project_name, "masks")
@@ -189,20 +195,14 @@ if __name__ == "__main__":
     with open(os.path.join(output_dir, "map_gen_config.json"), "w") as f:
         json.dump(map_gen_config, f, indent=4)
 
-    # If re_list is a range, we need to decide how many maps to generate.
-    # We'll default to 10 or a specified number.
-    num_maps_to_generate = 10 
-    if isinstance(re_list, list) and len(re_list) != 2:
-        num_maps_to_generate = len(re_list)
+    num_maps_to_generate = 20
+    if isinstance(rho_in_list, list) and len(rho_in_list) > 1:
+        num_maps_to_generate = max(20, len(rho_in_list))
 
     print(f"--- Generating {num_maps_to_generate} maps... ---")
     for i in range(num_maps_to_generate):
-
         l_char = generator.generate()
-        
-        # 檔名保留整數以維持乾淨，但內部運算是精確的 float
         filename = os.path.join(output_dir, f"L{int(l_char)}_{i:04d}.png")
-        
         generator.save_map(filename)
         print(f"  -> Characteristic Length (L): {l_char:.1f}")
 

@@ -49,18 +49,18 @@ class LBMCaseWriter:
         # ---------------------------------------------------------
         # [Resize Logic] 3. 計算目標縮放尺寸
         # ---------------------------------------------------------
-        save_res = config["outputs"]["dataset"]["save_resolution"]
+        save_res_h = config["outputs"]["dataset"]["save_resolution_height"]
 
-        long_side = max(self.crop_w, self.crop_h)
-        scale = save_res / long_side
+        # 以高度為基準進行縮放
+        scale = save_res_h / self.crop_h
 
         self.target_w = int(self.crop_w * scale)
-        self.target_h = int(self.crop_h * scale)
+        self.target_h = save_res_h
 
         print(
             f"[H5 Init] Crop: {self.crop_w}x{self.crop_h} -> "
             f"Resize: {self.target_w}x{self.target_h} "
-            f"(Scale: {scale:.4f}, Method: Average Pooling)"
+            f"(Target H: {save_res_h}, Scale: {scale:.4f}, Method: Average Pooling)"
         )
 
         # ---------------------------------------------------------

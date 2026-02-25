@@ -13,18 +13,25 @@ map_generator:
     width: 4096               # 計算域寬度（像素 / lattice）
 
   pinball:
-    center_x_ratio: 0.12      # 圓柱中心 X 位置（相對於 domain 寬度比例）
-    center_y_ratio: 0.5       # 圓柱中心 Y 位置（相對於 domain 高度比例）
-    radius_ratio: [0.03, 0.07]       # 圓柱半徑（相對於 domain 短邊比例）
-    spacing_factor: [1.8, 3.5]      # 多顆圓柱之間的間距倍率
+    shape: ["circle", "square", "triangle"] # 形狀選擇
+    center_x_ratio: 0.12
+    center_y_ratio: 0.5
+    size_ratio: [0.03, 0.07]      # 形狀大小 (相對於 domain 短邊)
+    spacing_factor: [1.8, 3.5]
+    rotation_angle: [-45, 45]     # 方形/三角形旋轉角度
+    triangle_orientation: ["vertex_left", "edge_left"] # 三角形朝向
 
   tube_bank:
-    start_x_ratio: 0.30      # 管束起始 X 位置比例
-    end_x_ratio: 0.55        # 管束結束 X 位置比例
-    radius_ratio: [0.03, 0.09]       # 管半徑比例
-    num_rows: [3, 6]            # 管束列數
-    num_cols: [4, 7]             # 管束行數
-    jitter_amount: [10,50]       # 隨機擾動幅度（避免完全規則排列）
+    shape: ["circle", "square", "triangle"] # 形狀選擇
+    layout: ["staggered", "aligned"]  # 排列方式
+    start_x_ratio: 0.30
+    end_x_ratio: 0.55
+    size_ratio: [0.03, 0.09]      # 形狀大小 (相對於 domain 短邊)
+    num_rows: [3, 6]
+    num_cols: [4, 7]
+    jitter_amount: [10, 50]
+    rotation_angle: [-15, 15]     # 方形/三角形旋轉角度
+    triangle_orientation: ["vertex_left", "edge_left"] # 三角形朝向
 
   step_urban:
     step_start_ratio: 0.55   # 階梯區起始 X 位置比例
@@ -94,7 +101,7 @@ template:
     dataset:
       enable: True            # 是否儲存 HDF5 資料集
       compression: "lzf"      # HDF5 壓縮方式
-      save_resolution: 512    # 儲存解析度（下採樣）
+      save_resolution_height: 256    # 儲存解析度（高度）
 
   boundary_condition:
     type: [0, 2, 1, 2]        # 邊界條件：W,E,S,N（0:速度, 1:出口, 2:牆面）

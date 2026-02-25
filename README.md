@@ -35,6 +35,9 @@ Define your project settings in `master_config.yaml`, then run the generation sc
 
 ```bash
 # Step 1: Generate geometry masks for your project
+# This script now supports configurable shapes (circles, rotatable squares, rotatable triangles),
+# various tube bank layouts (aligned, staggered), and rotation angles.
+# All these options are configured in master_config.yaml.
 # This creates SimCases/{project_name}/masks/
 python src/tools/hybrid_map_gen.py
 
