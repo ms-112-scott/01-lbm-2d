@@ -4,23 +4,45 @@
         "width": 4096
     },
     "pinball": {
+        "shape": [
+            "circle",
+            "square",
+            "triangle"
+        ],
         "center_x_ratio": 0.12,
         "center_y_ratio": 0.5,
-        "radius_ratio": [
+        "size_ratio": [
             0.03,
             0.07
         ],
         "spacing_factor": [
             1.8,
             3.5
+        ],
+        "rotation_angle": [
+            -45,
+            45
+        ],
+        "triangle_orientation": [
+            "vertex_left",
+            "edge_left"
         ]
     },
     "tube_bank": {
+        "shape": [
+            "circle",
+            "square",
+            "triangle"
+        ],
+        "layout": [
+            "staggered",
+            "aligned"
+        ],
         "start_x_ratio": 0.3,
         "end_x_ratio": 0.55,
-        "radius_ratio": [
+        "size_ratio": [
             0.03,
-            0.09
+            0.07
         ],
         "num_rows": [
             3,
@@ -33,6 +55,14 @@
         "jitter_amount": [
             10,
             50
+        ],
+        "rotation_angle": [
+            -15,
+            15
+        ],
+        "triangle_orientation": [
+            "vertex_left",
+            "edge_left"
         ]
     },
     "step_urban": {

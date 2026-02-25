@@ -26,7 +26,7 @@ map_generator:
     layout: ["staggered", "aligned"]  # 排列方式
     start_x_ratio: 0.30
     end_x_ratio: 0.55
-    size_ratio: [0.03, 0.09]      # 形狀大小 (相對於 domain 短邊)
+    size_ratio: [0.03, 0.07]      # 形狀大小 (相對於 domain 短邊)
     num_rows: [3, 6]
     num_cols: [4, 7]
     jitter_amount: [10, 50]
@@ -65,10 +65,10 @@ physical_constants:
 # 4. 物理與模擬控制
 # ==========================================
 physics_control:
-  rho_in_list: [1.001, 1.002, 1.003, 1.005, 1.010, 1.015, 1.020]  # 入口密度（壓力差）清單，取代原本的 re_list
+  rho_in_list: [1.001, 1.002, 1.003, 1.005, 1.010, 1.015, 1.020, 1.025, 1.030]  # 入口密度（壓力差）清單，取代原本的 re_list
   rho_out: 1.0                                           # 出口密度（基準壓力）
   nu: 0.01                                               # 固定的安全黏滯係數 (若需要也可以改成清單)
-  saves_per_physical_second: 25                          # 每個物理秒儲存資料次數
+  saves_per_physical_second: 20                          # 每個物理秒儲存資料次數
   
   # 模擬時長控制 (單位: Flow Pass, 即流體穿過場域一次所需的步數)
   warmup_passes: 1        # 暖機步數 (ramp-up)
