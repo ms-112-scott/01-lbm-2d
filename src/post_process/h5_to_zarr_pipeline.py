@@ -1,198 +1,183 @@
-import os
 import json
 import h5py
 import zarr
 import numpy as np
+from pathlib import Path
 from tqdm import tqdm
-from zarr.codecs import BloscCodec
+from numcodecs import Blosc
 from typing import List, Dict, Tuple
 
-# ==========================================
-# 專案工程師設定區 (Configuration)
-# ==========================================
-JSON_PATH = "E:/Scott/outputs/Hyper-1/plots/all_cases_summary.json"
-RAW_DIR = "E:/Scott/outputs/Hyper-1/raw"
-OUTPUT_DIR = "E:/Scott/outputs/L1_Zarr"
+# --- Configuration ---
+JSON_PATH = Path("E:/Scott/outputs/Hyper-1/plots/all_cases_summary.json")
+RAW_DIR = Path("E:/Scott/outputs/Hyper-1/raw")
+OUTPUT_DIR = Path("E:/Scott/outputs/L1_Zarr")
 
-# Zarr Chunking 策略 (T, C, H, W)
-# H 設定為 None 代表不切分高度 (適應 104 或 256)
-CHUNK_T = 200
-CHUNK_W = 256
+CHUNK_T, CHUNK_W = 200, 256
+V2_COMPRESSOR = Blosc(cname="zstd", clevel=5, shuffle=Blosc.BITSHUFFLE)
 
 
-def get_successful_cases(json_path: str) -> List[Dict]:
-    """讀取 JSON 並過濾出所有 Success 的案例"""
+def get_successful_cases(json_path: Path) -> List[Dict]:
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    # 只保留 Success 且包含 h5_file 資訊的案例
     return [c for c in data if c.get("status") == "Success" and "run_summary" in c]
 
 
 def pass1_calculate_global_stats(
-    cases: List[Dict], raw_dir: str
+    cases: List[Dict], raw_dir: Path
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    第一階段：計算全域通道的 Mean 與 Std
-    採用 Welford 在線演算法或總和累加法以節省記憶體
-    """
-    print("/n[Pass 1] 開始計算全域統計值 (Global Mean & Std)...")
-
-    n_channels = 9
-    sum_x = np.zeros(n_channels, dtype=np.float64)
-    sum_x2 = np.zeros(n_channels, dtype=np.float64)
+    print("\n[Pass 1] Calculating Global Statistics...")
+    sum_x = np.zeros(9, dtype=np.float64)
+    sum_x2 = np.zeros(9, dtype=np.float64)
     total_pixels = 0
 
-    for case in tqdm(cases, desc="掃描 H5 檔案"):
-        h5_filename = case["run_summary"]["h5_file"]
-        h5_path = os.path.join(raw_dir, h5_filename)
-
-        if not os.path.exists(h5_path):
-            print(f"警告：找不到檔案 {h5_path}，跳過。")
+    for case in tqdm(cases, desc="Scanning H5"):
+        h5_path = raw_dir / case["run_summary"]["h5_file"]
+        if not h5_path.exists():
             continue
 
         with h5py.File(h5_path, "r") as f:
-            # turbulence shape: [T, 9, H, W]
             turb = f["turbulence"]
             T, C, H, W = turb.shape
-
-            # 為了避免 RAM 爆炸，分批讀取時間步
             for t in range(0, T, CHUNK_T):
-                t_end = min(t + CHUNK_T, T)
-                data_chunk = turb[t:t_end]  # [t_chunk, 9, H, W]
-
-                # 將每個通道展平計算
+                chunk = turb[t : min(t + CHUNK_T, T)]
                 for c in range(C):
-                    channel_data = data_chunk[:, c, :, :].astype(np.float64)
-                    sum_x[c] += np.sum(channel_data)
-                    sum_x2[c] += np.sum(channel_data**2)
-
-                total_pixels += (t_end - t) * H * W
+                    data = chunk[:, c].astype(np.float64)
+                    sum_x[c] += np.sum(data)
+                    sum_x2[c] += np.sum(data**2)
+                total_pixels += chunk.shape[0] * H * W
 
     mean = sum_x / total_pixels
-    variance = (sum_x2 / total_pixels) - (mean**2)
-    # 避免數值誤差導致 variance 為負
-    variance = np.maximum(variance, 1e-10)
-    std = np.sqrt(variance)
-
-    print(f"-> 全域 Mean: {mean}")
-    print(f"-> 全域 Std : {std}")
+    std = np.sqrt(np.maximum((sum_x2 / total_pixels) - (mean**2), 1e-10))
     return mean, std
 
 
 def pass2_convert_to_zarr(
-    cases: List[Dict], raw_dir: str, output_dir: str, mean: np.ndarray, std: np.ndarray
+    cases: List[Dict],
+    raw_dir: Path,
+    output_dir: Path,
+    mean: np.ndarray,
+    std: np.ndarray,
 ):
-    """
-    第二階段：正規化並寫入 Zarr (採用 Float16 與高效壓縮) - Zarr v3 完美相容版
-    """
-    print("\n[Pass 2] 開始轉換為 Zarr 格式...")
-    os.makedirs(output_dir, exist_ok=True)
+    print("\n[Pass 2] Converting to Zarr with Precomputed Weights...")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 【核心修正 1】使用 Zarr v3 內建的 BloscCodec，並放進 List 中
-    compressors = [BloscCodec(cname="zstd", clevel=5, shuffle="bitshuffle")]
+    m_bc, s_bc = [v.reshape(1, 9, 1, 1).astype(np.float32) for v in (mean, std)]
 
-    # 將 mean/std 轉為 reshape 方便 Broadcasting 計算
-    mean_bc = mean.reshape(1, 9, 1, 1).astype(np.float32)
-    std_bc = std.reshape(1, 9, 1, 1).astype(np.float32)
-
-    for case in tqdm(cases, desc="轉換進度"):
-        h5_filename = case["run_summary"]["h5_file"]
-        h5_path = os.path.join(raw_dir, h5_filename)
-        case_name = case["case_name"]
-
-        if not os.path.exists(h5_path):
+    for case in tqdm(cases, desc="Processing Cases"):
+        h5_path = raw_dir / case["run_summary"]["h5_file"]
+        if not h5_path.exists():
             continue
 
-        zarr_path = os.path.join(output_dir, f"{case_name}.zarr")
-
         with h5py.File(h5_path, "r") as h5f:
-            root = zarr.open_group(zarr_path, mode="w")
+            zarr_path = output_dir / f"{case['case_name']}.zarr"
+            root = zarr.group(store=zarr.DirectoryStore(str(zarr_path)), overwrite=True)
 
-            # 寫入專案 MetaData
-            root.attrs["case_name"] = case_name
-            if "physical_scaled" in case:
-                root.attrs["reynolds_number"] = case["physical_scaled"][
-                    "reynolds_number_calculated"
-                ]
+            root.attrs.update(
+                {
+                    "case_name": case["case_name"],
+                    "reynolds_number": case.get("physical_scaled", {}).get(
+                        "reynolds_number_calculated"
+                    ),
+                }
+            )
 
-            # 1. 處理 Turbulence
-            turb_h5 = h5f["turbulence"]
-            T, C, H, W = turb_h5.shape
+            # --- 1. 原有的物理場轉換 ---
+            T, C, H, W = h5f["turbulence"].shape
 
-            # 【核心修正 2】參數改為 compressors=compressors
-            turb_zarr = root.require_array(
+            # Turbulence
+            z_turb = root.require_dataset(
                 "turbulence",
                 shape=(T, C, H, W),
                 chunks=(CHUNK_T, C, H, CHUNK_W),
-                dtype=np.float16,
-                compressors=compressors,
+                dtype="f2",
+                compressor=V2_COMPRESSOR,
             )
-
             for t in range(0, T, CHUNK_T):
-                t_end = min(t + CHUNK_T, T)
-                data_chunk = turb_h5[t:t_end].astype(np.float32)
+                t_e = min(t + CHUNK_T, T)
+                z_turb[t:t_e] = (
+                    (h5f["turbulence"][t:t_e].astype("f4") - m_bc) / s_bc
+                ).astype("f2")
 
-                # Channel-wise 正規化
-                norm_chunk = (data_chunk - mean_bc) / std_bc
-
-                turb_zarr[t:t_end] = norm_chunk.astype(np.float16)
-
-            # 2. 處理 Static Mask
-            mask_h5 = h5f["static_mask"][:]
-            mask_zarr = root.require_array(
+            # Static Mask (0: binary, 1: SDF)
+            mask = h5f["static_mask"][:]
+            root.require_dataset(
                 "static_mask",
-                shape=mask_h5.shape,
+                shape=mask.shape,
                 chunks=(2, H, CHUNK_W),
-                dtype=mask_h5.dtype,
-                compressors=compressors,
-            )
-            mask_zarr[:] = mask_h5
+                dtype=mask.dtype,
+                compressor=V2_COMPRESSOR,
+            )[:] = mask
 
-            # 3. 處理 Mean Fields
-            mean_vel = h5f["mean_vel_field"][:].astype(np.float32)
-            mean_vel_norm = (mean_vel - mean.reshape(9, 1, 1)) / std.reshape(9, 1, 1)
-            mean_zarr = root.require_array(
+            # Mean Fields
+            m_vel = h5f["mean_vel_field"][:].astype("f4")
+            m_vel_norm = (m_vel - mean.reshape(9, 1, 1)) / std.reshape(9, 1, 1)
+            root.require_dataset(
                 "mean_vel_field",
-                shape=mean_vel_norm.shape,
+                shape=m_vel_norm.shape,
                 chunks=(9, H, CHUNK_W),
-                dtype=np.float16,
-                compressors=compressors,
-            )
-            mean_zarr[:] = mean_vel_norm.astype(np.float16)
+                dtype="f2",
+                compressor=V2_COMPRESSOR,
+            )[:] = m_vel_norm.astype("f2")
 
-            # 4. 處理 Mean Vel Sq Field
-            vel_sq = h5f["mean_vel_sq_field"][:].astype(np.float16)
-            sq_zarr = root.require_array(
+            sq = h5f["mean_vel_sq_field"][:]
+            root.require_dataset(
                 "mean_vel_sq_field",
-                shape=vel_sq.shape,
+                shape=sq.shape,
                 chunks=(H, CHUNK_W),
-                dtype=np.float16,
-                compressors=compressors,
-            )
-            sq_zarr[:] = vel_sq
+                dtype="f2",
+                compressor=V2_COMPRESSOR,
+            )[:] = sq.astype("f2")
+
+            # --- 2. 關鍵新增：預算抽樣權重圖 (Precomputed Weights) ---
+            # 建立一個子組專門存放權重
+            weight_grp = root.create_group("sampling_weights")
+
+            # (A) Vor Mode: 使用平均速度平方和作為波動代理
+            vor_w = sq.astype("f4")
+            vor_w = (vor_w - vor_w.min()) / (vor_w.max() - vor_w.min() + 1e-6)
+
+            # (B) SDF Mode: 反轉 SDF，越近邊界權重越高
+            sdf = np.abs(mask[1]).astype("f4")
+            sdf_w = np.exp(-sdf / 5.0)  # Sigma=5.0
+
+            # (C) Mix Mode: 兩者混合
+            mix_w = 0.5 * vor_w + 0.5 * sdf_w
+
+            # 儲存權重 (使用 f4 以保證抽樣精度，且權重圖很小，不佔空間)
+            for name, data in [("vor", vor_w), ("sdf", sdf_w), ("mix", mix_w)]:
+                weight_grp.require_dataset(
+                    name,
+                    shape=data.shape,
+                    chunks=(H, CHUNK_W),
+                    dtype="f4",
+                    compressor=V2_COMPRESSOR,
+                )[:] = data
 
 
 if __name__ == "__main__":
-    # 1. 取得有效案例
-    successful_cases = get_successful_cases(JSON_PATH)
-    print(f"共找到 {len(successful_cases)} 個 Success 案例準備處理。")
+    cases = get_successful_cases(JSON_PATH)[:2]
+    if not cases:
+        exit("No successful cases found.")
 
-    # 2. 計算全域統計
-    global_mean, global_std = pass1_calculate_global_stats(successful_cases, RAW_DIR)
+    # 1. 計算全局統計資訊
+    g_mean, g_std = pass1_calculate_global_stats(cases, RAW_DIR)
 
-    # 3. 儲存全域統計供後續 PyTorch DataLoader 使用
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    stats_dict = {
-        "mean": global_mean.tolist(),
-        "std": global_std.tolist(),
-        "success_cases": [c["case_name"] for c in successful_cases],
-    }
-    with open(os.path.join(OUTPUT_DIR, "global_stats.json"), "w") as f:
-        json.dump(stats_dict, f, indent=4)
+    # 2. 🚩 關鍵修正：在寫入 JSON 之前，先確保輸出資料夾存在
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 4. 執行轉換
-    pass2_convert_to_zarr(
-        successful_cases, RAW_DIR, OUTPUT_DIR, global_mean, global_std
-    )
+    # 3. 儲存統計資訊
+    stats_path = OUTPUT_DIR / "global_stats.json"
+    with open(stats_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "mean": g_mean.tolist(),
+                "std": g_std.tolist(),
+                "cases": [c["case_name"] for c in cases],
+            },
+            f,
+            indent=4,
+        )
 
-    print("/n✅ 所有 HDF5 檔案已成功轉換並壓縮至 L1_Zarr_Archive/ !")
+    # 4. 執行第二階段轉換
+    pass2_convert_to_zarr(cases, RAW_DIR, OUTPUT_DIR, g_mean, g_std)
+    print(f"\n🎉 Task Completed. Stats saved to: {stats_path}")
