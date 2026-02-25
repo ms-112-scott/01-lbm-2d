@@ -71,6 +71,7 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
     gui_interval = out_cfg["gui"]["interval_steps"]
     vid_interval = out_cfg["video"]["interval_steps"]
     data_interval = out_cfg["dataset"]["interval_steps"]
+    start_record = out_cfg.get("start_record_step", 0)
 
     current_steps = 0
     pbar = tqdm(total=max_steps, unit="step")
@@ -138,7 +139,7 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
             )
             is_vid_frame = out_cfg["video"]["enable"] and (
                 current_steps % vid_interval == 0
-            )
+            ) and current_steps >= start_record
 
             img = None
             if is_gui_frame or is_vid_frame:
@@ -172,7 +173,7 @@ def run_simulation_loop(config, solver, viz, recorder, gui, writer, max_steps):
             t0_fetch = time.perf_counter()
             is_data_step = out_cfg["dataset"]["enable"] and (
                 current_steps % data_interval == 0
-            )
+            ) and current_steps >= start_record
 
             if is_data_step and writer:
                 moments_raw = solver.get_moments_numpy()

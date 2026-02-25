@@ -62,6 +62,11 @@ physics_control:
   rho_out: 1.0                                           # 出口密度（基準壓力）
   nu: 0.01                                               # 固定的安全黏滯係數 (若需要也可以改成清單)
   saves_per_physical_second: 25                          # 每個物理秒儲存資料次數
+  
+  # 模擬時長控制 (單位: Flow Pass, 即流體穿過場域一次所需的步數)
+  warmup_passes: 1        # 暖機步數 (ramp-up)
+  total_passes: 6         # 總模擬步數
+  start_record_passes: 3  # 開始錄製數據的步數 (採樣後 3 passes)
 
 # ==========================================
 # 5. 基礎模擬模板
@@ -70,8 +75,7 @@ template:
   simulation:
     nx: 4096                  # LBM 計算格點 X 方向數量
     ny: 1024                  # LBM 計算格點 Y 方向數量
-    max_steps: 1000000        # 模擬最大時間步數 1000000
-    # warmup_steps: 暖機步數（不輸出）。由 config_batch_gen.py 根據 (nx / u_lb) 動態計算為 1 個 pass。
+    # max_steps: 現在由 config_batch_gen.py 根據 total_passes 動態計算
     ghost_moments_s: 1.2      # MRT ghost moments 參數
 
   outputs:
@@ -105,3 +109,5 @@ template:
     sponge_x: 128             # X 方向 sponge layer 厚度
     buffer: 64                # 邊界 buffer 區域
     inlet_buffer: 128         # 入口專用 buffer 區域
+
+

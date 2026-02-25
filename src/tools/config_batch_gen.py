@@ -39,6 +39,7 @@ def generate_case_config(base_template, run_params, physical_constants):
     config["simulation"]["rho_out"] = float(rho_out)
     config["simulation"]["compute_step_size"] = interval
     config["simulation"]["warmup_steps"] = warmup_steps  # Set dynamic warmup steps
+    config["simulation"]["max_steps"] = run_params["max_steps"]
 
     # Fixed smagorinsky constant for all runs, or you can add logic if needed
     config["simulation"]["smagorinsky_constant"] = 0.2
@@ -48,6 +49,7 @@ def generate_case_config(base_template, run_params, physical_constants):
     
     # Optional target parameter, mostly for tracking/naming in output
     config["outputs"]["target_rho_in"] = float(rho_in)
+    config["outputs"]["start_record_step"] = run_params["start_record_step"]
     
     config["outputs"]["gui"]["interval_steps"] = interval
     config["outputs"]["video"]["interval_steps"] = interval
@@ -84,6 +86,11 @@ def main():
     base_nu = physics["nu"]
     base_rho_out = physics["rho_out"]
     saves_per_phys_sec = physics["saves_per_physical_second"]
+    
+    # 模擬時長 (Flow Passes)
+    w_passes = physics["warmup_passes"]
+    t_passes = physics["total_passes"]
+    s_passes = physics["start_record_passes"]
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -123,7 +130,11 @@ def main():
         estimated_u = math.sqrt((2.0 / 3.0) * (target_rho_in - base_rho_out)) if target_rho_in > base_rho_out else 0.01
 
         nx_val = base_template["simulation"]["nx"]
-        warmup_steps = int(nx_val / estimated_u) if estimated_u > 0 else 81920
+        steps_per_pass = int(nx_val / estimated_u) if estimated_u > 0 else 81920
+        
+        warmup_steps = w_passes * steps_per_pass
+        max_steps = t_passes * steps_per_pass
+        start_record_step = s_passes * steps_per_pass
         
         steps_per_phys_sec = l_char / estimated_u if estimated_u > 0 else 0
         target_interval = max(1, int(steps_per_phys_sec / saves_per_phys_sec)) if steps_per_phys_sec > 0 else 160
@@ -134,7 +145,9 @@ def main():
             "rho_in": target_rho_in, "rho_out": base_rho_out,
             "interval": target_interval, "mask_path": mask_path,
             "data_save_root": data_save_root, "project_name": project_name,
-            "warmup_steps": warmup_steps
+            "warmup_steps": warmup_steps,
+            "max_steps": max_steps,
+            "start_record_step": start_record_step
         }
 
         final_config = generate_case_config(base_template, run_params, physical_constants)

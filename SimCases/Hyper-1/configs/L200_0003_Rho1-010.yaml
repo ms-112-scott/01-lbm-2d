@@ -1,11 +1,11 @@
-simulation: {nx: 4096, ny: 1024, ghost_moments_s: 1.2, name: L200_0011, nu: 0.01,
+simulation: {nx: 4096, ny: 1024, ghost_moments_s: 1.2, name: L200_0003, nu: 0.01,
   characteristic_length: 200.0, rho_in: 1.01, rho_out: 1.0, compute_step_size: 97,
   warmup_steps: 50165, max_steps: 300990, smagorinsky_constant: 0.2}
 outputs:
   enable_profiling: false
   gui: {enable: true, max_size: 1024, show_zone_overlay: true, gaussian_sigma: 1.0,
     interval_steps: 97}
-  video: {enable: true, fps: 30, interval_steps: 97, filename: L200_0011.mp4}
+  video: {enable: true, fps: 30, interval_steps: 97, filename: L200_0003.mp4}
   dataset: {enable: true, compression: lzf, save_resolution: 512, interval_steps: 97}
   project_name: Hyper-1
   data_save_root: outputs\Hyper-1
@@ -18,7 +18,7 @@ boundary_condition:
   - &id001 [0.0, 0.0]
   - *id001
   - *id001
-mask: {enable: true, type: png, invert: false, path: SimCases\Hyper-1\masks\L200_0011.png}
+mask: {enable: true, type: png, invert: false, path: SimCases\Hyper-1\masks\L200_0003.png}
 domain_zones: {sponge_y: 64, sponge_x: 128, buffer: 64, inlet_buffer: 128}
 physical_constants:
   kinematic_viscosity_air_m2_s: 1.5e-05

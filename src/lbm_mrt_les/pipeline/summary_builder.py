@@ -23,6 +23,10 @@ def build_summary_entry(config: Dict, lattice_metadata: Dict, physical_params: D
     sim_out = {
          "actual_reynolds_number": round(lattice_metadata.get("reynolds_number_lattice_actual", 0), 2),
          "total_steps_executed": lattice_metadata.get("total_steps_executed"),
+         "tensor_shapes": {
+             "static_mask": lattice_metadata.get("tensor_shape_static_mask"),
+             "turbulence": lattice_metadata.get("tensor_shape_turbulence")
+         }
     }
 
     # --- Format Physical Scaled Parameters ---

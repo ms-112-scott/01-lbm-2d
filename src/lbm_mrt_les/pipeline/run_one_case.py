@@ -147,6 +147,18 @@ def main(
         if recorder:
             recorder.stop()
         if writer:
+            # Get tensor shapes before closing the writer
+            try:
+                if hasattr(writer, 'writer') and metadata.get("status") == "Success":
+                    h = writer.writer.target_h
+                    w = writer.writer.target_w
+                    c = writer.writer.channels
+                    count = writer.writer.running_count
+                    metadata["tensor_shape_static_mask"] = [2, h, w]
+                    metadata["tensor_shape_turbulence"] = [count, c, h, w]
+            except Exception as e:
+                print(f"[Warning] Failed to read tensor shapes: {e}")
+            
             writer.close()
         if gui:
             gui.close()
