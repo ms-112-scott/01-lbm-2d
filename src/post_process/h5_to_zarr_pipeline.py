@@ -8,9 +8,9 @@ from numcodecs import Blosc
 from typing import List, Dict, Tuple
 
 # --- Configuration ---
-JSON_PATH = Path("E:/Scott/outputs/Hyper-1/plots/all_cases_summary.json")
-RAW_DIR = Path("E:/Scott/outputs/Hyper-1/raw")
-OUTPUT_DIR = Path("E:/Scott/outputs/L1_Zarr")
+JSON_PATH = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Hyper-1/plots/all_cases_summary.json")
+RAW_DIR = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Hyper-1/raw")
+OUTPUT_DIR = Path("D:/Scott/sim_dataset")
 
 CHUNK_T, CHUNK_W = 200, 256
 V2_COMPRESSOR = Blosc(cname="zstd", clevel=5, shuffle=Blosc.BITSHUFFLE)
@@ -155,7 +155,7 @@ def pass2_convert_to_zarr(
 
 
 if __name__ == "__main__":
-    cases = get_successful_cases(JSON_PATH)[:2]
+    cases = get_successful_cases(JSON_PATH)
     if not cases:
         exit("No successful cases found.")
 
