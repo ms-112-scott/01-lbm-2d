@@ -10,20 +10,20 @@ CONFIG = {
     "NX": 2048,
     "NY": 1024,
     # 批次設定
-    "RECT_COUNT": [2, 4, 6],
-    "NUM_SAMPLES": [20, 20, 10],
+    "RECT_COUNT": [100],
+    "NUM_SAMPLES": [2],
     # === 物理限制 1: 幾何間距 ===
     "MIN_DISTANCE": 30,  # 建築物間最小空隙 (px)
     # === 物理限制 2: 阻塞率 (Blockage Ratio) ===
-    "MAX_BLOCKAGE_RATIO": 0.4,
-    "ROTATE_ANGLE_MAX": 15,
+    "MAX_BLOCKAGE_RATIO": 0.8,
+    "ROTATE_ANGLE_MAX": 80,
     "OUTPUT_DIR": "src/tools/rect_masks",
     "MAX_ATTEMPTS": 200,
     "VAL_BACKGROUND": 255,
     "VAL_OBJECT": 0,
     # === 關鍵修改：這裡定義左邊第一個像素必須出現的位置 ===
     "BUFFER": {"TOP": 128, "BOTTOM": 128, "LEFT": 128, "RIGHT": 512},
-    "RECT_SIZE": {"MIN_W": 50, "MAX_W": 400, "MIN_H": 50, "MAX_H": 400},
+    "RECT_SIZE": {"MIN_W": 10, "MAX_W": 400, "MIN_H": 10, "MAX_H": 400},
 }
 
 

@@ -45,8 +45,9 @@ python src/tools/hybrid_map_gen.py
 # This creates SimCases/{project_name}/configs/
 python src/tools/config_batch_gen.py
 ```
-*   **Input Location**: `SimCases/{project_name}/`
-*   **Configuration**: All settings are controlled by `master_config.yaml`.
+
+- **Input Location**: `SimCases/{project_name}/`
+- **Configuration**: All settings are controlled by `master_config.yaml`.
 
 ### 3. Run Batch Simulation
 
@@ -55,8 +56,11 @@ Execute the main runner, referencing your `project_name`. The script will automa
 ```bash
 # Step 3: Run the full simulation batch for your project
 python -m src.lbm_mrt_les.pipeline.batch_run --project_name Hyper-1
+
+
 ```
-*   **Output Location**: `outputs/{project_name}/` (containing `raw`, `vis`, `plots`, and a summary JSON).
+
+- **Output Location**: `outputs/{project_name}/` (containing `raw`, `vis`, `plots`, and a summary JSON).
 
 ---
 

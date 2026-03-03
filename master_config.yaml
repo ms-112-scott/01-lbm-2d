@@ -2,119 +2,118 @@
 # 1. 批次處理與路徑設定
 # ==========================================
 settings:
-  project_name: "Hyper-1"    # 專案整體名稱，用於建立主要輸出資料夾
+  project_name: "Urban-1" # 專案整體名稱，用於建立主要輸出資料夾
 
 # ==========================================
 # 2. 地圖生成器設定
 # ==========================================
 map_generator:
   domain:
-    height: 1024              # 計算域高度（像素 / lattice）
-    width: 4096               # 計算域寬度（像素 / lattice）
+    height: 2048 # 計算域高度（像素 / lattice）
+    width: 4096 # 計算域寬度（像素 / lattice）
 
   pinball:
     shape: ["circle", "square", "triangle"] # 形狀選擇
     center_x_ratio: 0.12
     center_y_ratio: 0.5
-    size_ratio: [0.03, 0.07]      # 形狀大小 (相對於 domain 短邊)
+    size_ratio: [0.03, 0.07] # 形狀大小 (相對於 domain 短邊)
     spacing_factor: [1.8, 3.5]
-    rotation_angle: [-45, 45]     # 方形/三角形旋轉角度
+    rotation_angle: [-45, 45] # 方形/三角形旋轉角度
     triangle_orientation: ["vertex_left", "edge_left"] # 三角形朝向
 
   tube_bank:
     shape: ["circle", "square", "triangle"] # 形狀選擇
-    layout: ["staggered", "aligned"]  # 排列方式
+    layout: ["staggered", "aligned"] # 排列方式
     start_x_ratio: 0.30
     end_x_ratio: 0.55
-    size_ratio: [0.03, 0.07]      # 形狀大小 (相對於 domain 短邊)
+    size_ratio: [0.03, 0.07] # 形狀大小 (相對於 domain 短邊)
     num_rows: [3, 6]
     num_cols: [4, 7]
     jitter_amount: [10, 50]
-    rotation_angle: [-15, 15]     # 方形/三角形旋轉角度
+    rotation_angle: [-15, 15] # 方形/三角形旋轉角度
     triangle_orientation: ["vertex_left", "edge_left"] # 三角形朝向
 
   step_urban:
-    step_start_ratio: 0.55   # 階梯區起始 X 位置比例
-    step_width_ratio: 0.05   # 單一階梯寬度比例
+    step_start_ratio: 0.55 # 階梯區起始 X 位置比例
+    step_width_ratio: 0.05 # 單一階梯寬度比例
     step_height_ratio: [0.2, 0.45] # 階梯高度比例
     block_start_ratio: 0.70 # 建築區起始 X 位置比例
-    block_end_ratio: 0.85    # 建築區結束 X 位置比例
-    rect_count: [5, 12]            # 建築矩形數量
-    max_attempts: 200        # 嘗試生成建築的最大次數
-    min_distance: 64         # 建築物間最小距離（像素）
+    block_end_ratio: 0.85 # 建築區結束 X 位置比例
+    rect_count: [5, 12] # 建築矩形數量
+    max_attempts: 200 # 嘗試生成建築的最大次數
+    min_distance: 64 # 建築物間最小距離（像素）
     max_blockage_ratio: 1.0 # 最大阻塞比例限制
-    rotate_angle_max: [0,30]      # 建築物最大旋轉角度（度）
+    rotate_angle_max: [0, 30] # 建築物最大旋轉角度（度）
     rect_size:
-      w: [50, 200]              # 建築寬度
-      h: [50, 200]             # 建築寬度
+      w: [50, 200] # 建築寬度
+      h: [50, 200] # 建築寬度
 
   validation:
-    boundary_buffer: 10      # 邊界緩衝距離，用於合法性檢查
+    boundary_buffer: 10 # 邊界緩衝距離，用於合法性檢查
 
   output:
-    invert_values: True      # 是否反轉輸出 mask 的數值定義
+    invert_values: True # 是否反轉輸出 mask 的數值定義
 
 # ==========================================
 # 3. 物理常數與換算
 # ==========================================
 physical_constants:
-  kinematic_viscosity_air_m2_s: 1.5e-5    # 空氣動黏滯係數（m²/s，20°C）
-  inlet_velocity_ms: [1.0, 5.0, 15.0]                  # 宏觀物理世界入口風速（m/s）
+  kinematic_viscosity_air_m2_s: 1.5e-5 # 空氣動黏滯係數（m²/s，20°C）
+  inlet_velocity_ms: [1.0, 3.0, 5.0, 7.5, 10.0, 15.0] # 宏觀物理世界入口風速（m/s）
 
 # ==========================================
 # 4. 物理與模擬控制
 # ==========================================
 physics_control:
-  rho_in_list: [1.001, 1.002, 1.003, 1.005, 1.010, 1.015, 1.020, 1.025, 1.030]  # 入口密度（壓力差）清單，取代原本的 re_list
-  rho_out: 1.0                                           # 出口密度（基準壓力）
-  nu: 0.01                                               # 固定的安全黏滯係數 (若需要也可以改成清單)
-  saves_per_physical_second: 20                          # 每個物理秒儲存資料次數
-  
+  rho_in_list: [1.001, 1.005, 1.010, 1.015, 1.020, 1.025, 1.030, 1.035] # 入口密度（壓力差）清單，取代原本的 re_list
+  rho_out: 1.0 # 出口密度（基準壓力）
+  nu: 0.01 # 固定的安全黏滯係數 (若需要也可以改成清單)
+  saves_per_physical_second: 20 # 每個物理秒儲存資料次數
+
   # 模擬時長控制 (單位: Flow Pass, 即流體穿過場域一次所需的步數)
-  warmup_passes: 1        # 暖機步數 (ramp-up)
-  total_passes: 6         # 總模擬步數
-  start_record_passes: 3  # 開始錄製數據的步數 (採樣後 3 passes)
+  warmup_passes: 1 # 暖機步數 (ramp-up)
+  total_passes: 6 # 總模擬步數
+  start_record_passes: 3 # 開始錄製數據的步數 (採樣後 3 passes)
 
 # ==========================================
 # 5. 基礎模擬模板
 # ==========================================
 template:
   simulation:
-    nx: 4096                  # LBM 計算格點 X 方向數量
-    ny: 1024                  # LBM 計算格點 Y 方向數量
+    nx: 4096 # LBM 計算格點 X 方向數量
+    ny: 2048 # LBM 計算格點 Y 方向數量
     # max_steps: 現在由 config_batch_gen.py 根據 total_passes 動態計算
-    ghost_moments_s: 1.2      # MRT ghost moments 參數
+    ghost_moments_s: 1.2 # MRT ghost moments 參數
 
   outputs:
-    enable_profiling: False   # 是否啟用效能分析
+    enable_profiling: False # 是否啟用效能分析
 
     gui:
-      enable: True            # 是否啟用即時 GUI 顯示
-      max_size: 1024          # GUI 顯示最大邊長
-      show_zone_overlay: True   # 是否顯示 domain zone 疊圖
-      gaussian_sigma: 1.0     # GUI 顯示用高斯模糊 sigma
+      enable: False # 是否啟用即時 GUI 顯示
+      max_size: 1024 # GUI 顯示最大邊長
+      show_zone_overlay: True # 是否顯示 domain zone 疊圖
+      gaussian_sigma: 1.0 # GUI 顯示用高斯模糊 sigma
 
     video:
-      enable: True            # 是否輸出影片
-      fps: 30                 # 影片幀率
+      enable: True # 是否輸出影片
+      fps: 30 # 影片幀率
 
     dataset:
-      enable: True            # 是否儲存 HDF5 資料集
-      compression: "lzf"      # HDF5 壓縮方式
-      save_resolution_height: 256    # 儲存解析度（高度）
+      enable: True # 是否儲存 HDF5 資料集
+      compression: "lzf" # HDF5 壓縮方式
+      save_resolution_height: 256 # 儲存解析度（高度）
 
   boundary_condition:
-    type: [0, 2, 1, 2]        # 邊界條件：W,E,S,N（0:速度, 1:出口, 2:牆面）
+    type: [0, 2, 1, 2] # 邊界條件：W,E,S,N（0:速度, 1:出口, 2:牆面）
 
   mask:
-    enable: True              # 是否啟用遮罩
-    type: "png"               # 遮罩檔案格式
-    invert: False             # 是否反轉遮罩值
+    enable: True # 是否啟用遮罩
+    type: "png" # 遮罩檔案格式
+    invert: False # 是否反轉遮罩值
 
   domain_zones:
-    sponge_y: 64              # Y 方向 sponge layer 厚度
-    sponge_x: 128             # X 方向 sponge layer 厚度
-    buffer: 64                # 邊界 buffer 區域
-    inlet_buffer: 128         # 入口專用 buffer 區域
-
+    sponge_y: 64 # Y 方向 sponge layer 厚度
+    sponge_x: 128 # X 方向 sponge layer 厚度
+    buffer: 64 # 邊界 buffer 區域
+    inlet_buffer: 128 # 入口專用 buffer 區域
 

@@ -10,9 +10,9 @@ from typing import List, Dict, Tuple
 # --- Configuration ---
 JSON_PATH = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Hyper-1/plots/all_cases_summary.json")
 RAW_DIR = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Hyper-1/raw")
-OUTPUT_DIR = Path("D:/Scott/sim_dataset")
+OUTPUT_DIR = Path("C:/Users/User/Desktop/NCA_workspace/sim_dataset_zarr64")
 
-CHUNK_T, CHUNK_W = 200, 256
+CHUNK_T, CHUNK_W = 100, 64
 V2_COMPRESSOR = Blosc(cname="zstd", clevel=5, shuffle=Blosc.BITSHUFFLE)
 
 
@@ -162,7 +162,7 @@ if __name__ == "__main__":
     # 1. 計算全局統計資訊
     g_mean, g_std = pass1_calculate_global_stats(cases, RAW_DIR)
 
-    # 2. 🚩 關鍵修正：在寫入 JSON 之前，先確保輸出資料夾存在
+    # 2. 關鍵修正：在寫入 JSON 之前，先確保輸出資料夾存在
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # 3. 儲存統計資訊
