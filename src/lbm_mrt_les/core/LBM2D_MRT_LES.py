@@ -3,7 +3,6 @@ import taichi as ti
 import taichi.math as tm
 
 
-
 ti.init(arch=ti.gpu)
 
 
@@ -83,10 +82,10 @@ class LBM2D_MRT_LES:
         # [Fix] Sponge Layer Parameters from Config
         # ==========================================
         zones = self.config["domain_zones"]
-        self.sponge_w_x = zones["sponge_x"]       # Outlet Sponge
+        self.sponge_w_x = zones["sponge_x"]  # Outlet Sponge
         self.sponge_w_in = zones["inlet_buffer"]  # Inlet Sponge
-        self.sponge_w_y = zones["sponge_y"]       # Top/Bottom Sponge
-        self.sponge_strength = 2.0                # Sponge Strength
+        self.sponge_w_y = zones["sponge_y"]  # Top/Bottom Sponge
+        self.sponge_strength = 2.0  # Sponge Strength
 
     #  init 子函式: 記憶體配置 (Fields)
     def _init_fields(self, mask_data):
@@ -238,13 +237,26 @@ class LBM2D_MRT_LES:
     @ti.kernel
     def collide_and_stream(self):
         for i, j in ti.ndrange((1, self.nx - 1), (1, self.ny - 1)):
-            # --- 1. Streaming (流動步驟) ---
+
+            # ============================================================
+            # 1. Streaming (流動步驟)
+            # ------------------------------------------------------------
+            # Pull-scheme: 從鄰居節點拉取分布函數
+            #   f_temp[k](x, t+1) = f_old[k](x - e_k, t)
+            # 即：每個方向 k 的粒子，從「上一步在 e_k 反方向」的節點流過來
+            # ============================================================
             f_temp = ti.types.vector(9, float)(0.0)
             for k in ti.static(range(9)):
                 ip, jp = i - self.e[k, 0], j - self.e[k, 1]
                 f_temp[k] = self.f_old[ip, jp][k]
 
-            # --- 2. MRT Moment Transformation (矩陣轉換) ---
+            # ============================================================
+            # 2. MRT Moment Transformation (矩陣轉換：速度空間 → 矩空間)
+            # ------------------------------------------------------------
+            # m = M · f
+            # M 為 9×9 的 D2Q9 MRT 轉換矩陣 (Lallemand & Luo, 2000)
+            # 矩空間順序：[rho, e, eps, jx, qx, jy, qy, pxx, pxy]
+            # ============================================================
             m = ti.types.vector(9, float)(0.0)
             for r in ti.static(range(9)):
                 val = 0.0
@@ -252,43 +264,109 @@ class LBM2D_MRT_LES:
                     val += self.M_field[r, c] * f_temp[c]
                 m[r] = val
 
-            # --- 3. Macroscopic Variables (計算密度與速度) ---
+            # ============================================================
+            # 3. Macroscopic Variables (計算巨觀量：密度與速度)
+            # ------------------------------------------------------------
+            # 守恆量直接從矩空間讀取：
+            #   rho = m[0] = Σ f_k
+            #   j_x = m[3] = Σ e_kx · f_k  →  u = jx / rho
+            #   j_y = m[5] = Σ e_ky · f_k  →  v = jy / rho
+            # ============================================================
             rho_l = m[0]
             u_l, v_l = 0.0, 0.0
             if rho_l > 0:
                 u_l, v_l = m[3] / rho_l, m[5] / rho_l
 
+            # ============================================================
+            # 4. Equilibrium Moments (計算平衡矩)
+            # ------------------------------------------------------------
+            # m_eq 的完整定義 (見 get_meq)：
+            #   m_eq[0] = rho
+            #   m_eq[1] = rho(-2 + 3u²)      [能量 e]
+            #   m_eq[2] = rho( 1 - 3u²)      [能量平方 eps]
+            #   m_eq[3] = rho·u              [動量 jx]
+            #   m_eq[4] = -rho·u             [熱通流 qx]
+            #   m_eq[5] = rho·v              [動量 jy]
+            #   m_eq[6] = -rho·v             [熱通流 qy]
+            #   m_eq[7] = rho(u² - v²)       [正應力差 pxx]
+            #   m_eq[8] = rho·u·v            [切應力 pxy]
+            # ============================================================
             m_eq = self.get_meq(rho_l, u_l, v_l)
-            neq_7 = m[7] - m_eq[7]
-            neq_8 = m[8] - m_eq[8]
-            momentum_neq_mag = tm.sqrt(neq_7 * neq_7 + neq_8 * neq_8)
 
-            # --- 4. LES (大渦模擬) 基礎計算 ---
+            # ============================================================
+            # 5. LES Smagorinsky 渦黏修正 (大渦模擬)
+            # ------------------------------------------------------------
+            #  FIX: 非平衡應力張量 Frobenius 範數計算錯誤
+            #
+            # 正確公式 (Hou et al., 1994; Premnath & Abraham, 2007)：
+            #   在 D2Q9 中，非平衡應力張量的分量為：
+            #     Π_xx^neq =  m_7^neq     (pxx)
+            #     Π_yy^neq = -m_7^neq     (因為 pxx = Π_xx - Π_yy，且 Tr=0 for incompressible)
+            #     Π_xy^neq =  m_8^neq     (pxy)
+            #     Π_yx^neq =  m_8^neq     (對稱)
+            #
+            #   Frobenius 範數：
+            #     |Π^neq|_F = sqrt(Π_xx² + Π_yy² + Π_xy² + Π_yx²)
+            #               = sqrt(m7² + m7² + m8² + m8²)
+            #               = sqrt(2·m7² + 2·m8²)
+            #               = sqrt(2) · sqrt(m7² + m8²)
+            #
+            #   然後代入 Smagorinsky 修正公式：
+            #     tau_eff = 0.5 · [sqrt(tau_0² + C_s²·(18√2/rho)·|Π^neq|_F) ]
+            #
+            #   其中 Cs_sq_factor = 18 · Cs²  (定義於 _init_params)
+            #   需加入 √2 使 Cs_sq_factor 對應正確的張量範數：
+            #     term_inside = tau_0² + (Cs_sq_factor · sqrt(2) · |Π^neq|_F) / rho
+            #
+            #   等價寫法 (直接展開，避免多一次 sqrt，效能最佳)：
+            #     neq_tensor_norm_sq = 2·m7² + 4·m8²   (完整張量 Frobenius 範數的平方 / ... 見下)
+            #
+            #   最終等價的計算方式 (代入後化簡)：
+            #     |Π^neq|_F = sqrt(2·neq_7² + 2·neq_8²)
+            #     term_inside = tau_0² + Cs_sq_factor · |Π^neq|_F / rho
+            # ============================================================
+            neq_7 = m[7] - m_eq[7]  # pxx 非平衡分量
+            neq_8 = m[8] - m_eq[8]  # pxy 非平衡分量
+
+            # [FIX] 正確的 Frobenius 範數：√(2·neq_7² + 2·neq_8²)，不是 √(neq_7² + neq_8²)
+            # 係數 2 來自 D2Q9 應力張量的對稱結構 (pxx, pyy = -pxx, pxy, pyx = pxy)
+            neq_tensor_norm = tm.sqrt(2.0 * neq_7 * neq_7 + 2.0 * neq_8 * neq_8)
+
             tau_eff = self.tau_0
             if self.C_smag > 0.001:
+                # Smagorinsky 動態 tau 修正：
+                #   tau_eddy = 0.5 · [sqrt(tau_0² + Cs_sq_factor · |Π^neq|_F / rho) - tau_0]
+                #   tau_eff  = tau_0 + tau_eddy
+                # 其中 Cs_sq_factor = 18 · Cs²（見 _init_params：self.Cs_sq_factor = 18.0 * C_smag**2）
                 term_inside = (
-                    self.tau_0**2 + (self.Cs_sq_factor * momentum_neq_mag) / rho_l
+                    self.tau_0**2 + (self.Cs_sq_factor * neq_tensor_norm) / rho_l
                 )
                 tau_eddy = 0.5 * (tm.sqrt(term_inside) - self.tau_0)
                 tau_eff = self.tau_0 + tau_eddy
 
-            # ==========================================
-            # [修改] 5. Omni-directional Sponge Layer (全方位阻尼層)
-            # ==========================================
-            # A. 計算 X 方向阻尼 (Outlet & Inlet)
+            # ============================================================
+            # 6. Omni-directional Sponge Layer (全方位阻尼層)
+            # ------------------------------------------------------------
+            # 在邊界緩衝區內，額外增大有效 tau 來抑制波動反射。
+            # 阻尼強度以二次函數從邊界向內遞減：
+            #   coord ∈ [0, 1]，0 = 場域邊緣，1 = 阻尼層內緣
+            #   damping = sponge_strength · coord²
+            # X 與 Y 方向阻尼取最大值疊加到 tau_eff
+            # ============================================================
+            # A. X 方向阻尼 (Outlet & Inlet)
             damping_x = 0.0
-            
-            # Outlet Sponge (Right)
+
+            # Outlet Sponge (右側出口)
             if i > (self.nx - self.sponge_w_x):
                 coord = (i - (self.nx - self.sponge_w_x)) / self.sponge_w_x
                 damping_x = self.sponge_strength * (coord * coord)
-            
-            # Inlet Sponge (Left) - Critical for Reflection Prevention
+
+            # Inlet Sponge (左側入口，防止壓力波反射)
             elif i < self.sponge_w_in:
                 coord = (self.sponge_w_in - i) / self.sponge_w_in
                 damping_x = self.sponge_strength * (coord * coord)
 
-            # B. 計算 Y 方向阻尼 (Top & Bottom)
+            # B. Y 方向阻尼 (Top & Bottom)
             damping_y = 0.0
             # 下邊界區域
             if j < self.sponge_w_y:
@@ -299,21 +377,40 @@ class LBM2D_MRT_LES:
                 coord = (j - (self.ny - self.sponge_w_y)) / self.sponge_w_y
                 damping_y = self.sponge_strength * (coord * coord)
 
-            # C. 疊加阻尼 (取最大值)
+            # C. 疊加阻尼 (取最大值，避免角落雙重計算)
             tau_eff += tm.max(damping_x, damping_y)
-            # ==========================================
 
-            # --- 6. MRT Relaxation (鬆弛運算) ---
+            # ============================================================
+            # 7. MRT Relaxation (矩空間鬆弛運算)
+            # ------------------------------------------------------------
+            # m* = m - S · (m - m_eq)
+            # S 為對角鬆弛矩陣：
+            #   S[0] = 0     (rho，守恆量，不鬆弛)
+            #   S[1] = S_other (能量 e)
+            #   S[2] = S_other (能量平方 eps)
+            #   S[3] = 0     (jx，守恆量)
+            #   S[4] = S_other (熱通流 qx)
+            #   S[5] = 0     (jy，守恆量)
+            #   S[6] = S_other (熱通流 qy)
+            #   S[7] = s_eff  ← 由 LES + Sponge 動態決定的剪切鬆弛率
+            #   S[8] = s_eff  ← 同上
+            # s_eff = 1 / tau_eff
+            # ============================================================
             s_eff = 1.0 / tau_eff
             S_local = self.S_base
 
-            # MRT 的 S7, S8 控制剪切黏滯性，必須使用 s_eff
+            # S[7], S[8] 控制剪切黏滯 (pxx, pxy)，使用動態 s_eff
             S_local[7] = s_eff
             S_local[8] = s_eff
 
             m_star = m - S_local * (m - m_eq)
 
-            # --- 7. Inverse MRT (轉回分布函數) ---
+            # ============================================================
+            # 8. Inverse MRT (逆轉換：矩空間 → 速度空間)
+            # ------------------------------------------------------------
+            # f_new = M⁻¹ · m*
+            # 得到碰撞後的分布函數，寫入 f_new 供下一步使用
+            # ============================================================
             f_new_val = ti.types.vector(9, float)(0.0)
             for r in ti.static(range(9)):
                 val = 0.0
@@ -366,24 +463,24 @@ class LBM2D_MRT_LES:
                     # Zou-He Pressure Boundary at West
                     rho_in = self.rho_in_target
                     rho_current = 1.0 + (rho_in - 1.0) * ramp
-                    
+
                     f0 = self.f_old[inb, jnb][0]
                     f2 = self.f_old[inb, jnb][2]
                     f3 = self.f_old[inb, jnb][3]
                     f4 = self.f_old[inb, jnb][4]
                     f6 = self.f_old[inb, jnb][6]
                     f7 = self.f_old[inb, jnb][7]
-                    
+
                     ux = 1.0 - (f0 + f2 + f4 + 2.0 * (f3 + f6 + f7)) / rho_current
                     uy = 0.0
-                    
+
                     f1 = f3 + (2.0 / 3.0) * rho_current * ux
                     f5 = f7 - 0.5 * (f2 - f4) + (1.0 / 6.0) * rho_current * ux
                     f8 = f6 + 0.5 * (f2 - f4) + (1.0 / 6.0) * rho_current * ux
-                    
+
                     self.rho[ibc, jbc] = rho_current
                     self.vel[ibc, jbc] = tm.vec2(ux, uy)
-                    
+
                     self.f_old[ibc, jbc] = self.f_eq(ibc, jbc)
                     self.f_old[ibc, jbc][1] = f1
                     self.f_old[ibc, jbc][5] = f5
@@ -391,30 +488,32 @@ class LBM2D_MRT_LES:
                 else:
                     self.vel[ibc, jbc] = self.bc_value[dr] * ramp
                     self.rho[ibc, jbc] = self.rho[inb, jnb]
-                    self.f_old[ibc, jbc] = self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
+                    self.f_old[ibc, jbc] = (
+                        self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
+                    )
 
             elif self.bc_type[dr] == 1:  # Outlet (Zou-He Pressure)
                 if ibc == self.nx - 1:
                     # Zou-He Pressure Boundary at East
                     rho_out = self.rho_out_target
-                    
+
                     f0 = self.f_old[inb, jnb][0]
                     f1 = self.f_old[inb, jnb][1]
                     f2 = self.f_old[inb, jnb][2]
                     f4 = self.f_old[inb, jnb][4]
                     f5 = self.f_old[inb, jnb][5]
                     f8 = self.f_old[inb, jnb][8]
-                    
+
                     ux = -1.0 + (f0 + f2 + f4 + 2.0 * (f1 + f5 + f8)) / rho_out
                     uy = 0.0
-                    
+
                     f3 = f1 - (2.0 / 3.0) * rho_out * ux
                     f6 = f8 - 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
                     f7 = f5 + 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
-                    
+
                     self.rho[ibc, jbc] = rho_out
                     self.vel[ibc, jbc] = tm.vec2(ux, uy)
-                    
+
                     self.f_old[ibc, jbc] = self.f_eq(ibc, jbc)
                     self.f_old[ibc, jbc][3] = f3
                     self.f_old[ibc, jbc][6] = f6
@@ -422,7 +521,9 @@ class LBM2D_MRT_LES:
                 else:
                     self.vel[ibc, jbc] = self.vel[inb, jnb]
                     self.rho[ibc, jbc] = self.rho[inb, jnb]
-                    self.f_old[ibc, jbc] = self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
+                    self.f_old[ibc, jbc] = (
+                        self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
+                    )
 
             elif self.bc_type[dr] == 2:  # Free-Slip (Symmetry / Specular)
                 # 邏輯：切向速度照抄鄰居 (Free)，法向速度設為 0 (Wall)
@@ -430,16 +531,22 @@ class LBM2D_MRT_LES:
                 # 判斷牆壁方向：
                 # 如果 Ghost Node 和 Neighbor Node 的 X 座標相同 (ibc == inb)，代表是上下牆壁
                 if ibc == inb:
-                    self.vel[ibc, jbc][0] = self.vel[inb, jnb][0]  # u_x (切向): 保留流體速度
+                    self.vel[ibc, jbc][0] = self.vel[inb, jnb][
+                        0
+                    ]  # u_x (切向): 保留流體速度
                     self.vel[ibc, jbc][1] = 0.0  # u_y (法向): 撞牆歸零
 
                 # 否則就是左右牆壁 (jbc == jnb)
                 else:
                     self.vel[ibc, jbc][0] = 0.0  # u_x (法向): 撞牆歸零
-                    self.vel[ibc, jbc][1] = self.vel[inb, jnb][1]  # u_y (切向): 保留流體速度
-                
+                    self.vel[ibc, jbc][1] = self.vel[inb, jnb][
+                        1
+                    ]  # u_y (切向): 保留流體速度
+
                 self.rho[ibc, jbc] = self.rho[inb, jnb]
-                self.f_old[ibc, jbc] = self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
+                self.f_old[ibc, jbc] = (
+                    self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
+                )
 
     def run_step(self, steps=1):
         """

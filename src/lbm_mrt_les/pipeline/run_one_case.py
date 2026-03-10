@@ -14,6 +14,7 @@ from ..io.Video_Recorder import Video_Recorder
 
 ti.init(arch=ti.gpu, device_memory_fraction=0.8, log_level=ti.INFO)
 
+
 def init_simulation_env(
     config: Dict[str, Any],
     mask_path: str,
@@ -112,17 +113,20 @@ def main(
 
         # 4. Collect metadata for summary
         metadata.update(loop_metadata)
-        
+
         # If successful, add more detailed metadata for post-processing
         if metadata.get("status") == "Success":
             metadata["reason"] = "Completed successfully"
-            
+
             # Calculate actual Re based on measured max velocity at the end of simulation
-            measured_u = float(solver.get_max_velocity())
+            vel_np = solver.vel.to_numpy()
+            # 入口面 (i=0 或 i=1)，取 x 方向速度的平均
+            inlet_u = float(np.mean(vel_np[1, 1:-1, 0]))  # 1:-1 排除上下牆
+            metadata["u_inlet_lattice_lu"] = inlet_u
             l_char = config["simulation"]["characteristic_length"]
             nu = config["simulation"]["nu"]
-            actual_re = (measured_u * l_char) / nu if nu > 0 else float('inf')
-            
+            actual_re = (measured_u * l_char) / nu if nu > 0 else float("inf")
+
             # Add detailed lattice-level outputs for physical scaling
             metadata["reynolds_number_lattice_actual"] = actual_re
             metadata["l_char_lattice_px"] = l_char
@@ -133,8 +137,12 @@ def main(
             metadata["total_steps_executed"] = metadata.get("final_steps", 0)
 
             # File info
-            metadata["h5_file"] = os.path.basename(h5_output_path) if h5_output_path else "N/A"
-            metadata["video_file"] = os.path.basename(video_output_path) if video_output_path else "N/A"
+            metadata["h5_file"] = (
+                os.path.basename(h5_output_path) if h5_output_path else "N/A"
+            )
+            metadata["video_file"] = (
+                os.path.basename(video_output_path) if video_output_path else "N/A"
+            )
 
     except Exception as e:
         print(f"\n[CRITICAL ERROR] Simulation Failed: {e}")
@@ -149,7 +157,7 @@ def main(
         if writer:
             # Get tensor shapes before closing the writer
             try:
-                if hasattr(writer, 'writer') and metadata.get("status") == "Success":
+                if hasattr(writer, "writer") and metadata.get("status") == "Success":
                     h = writer.writer.target_h
                     w = writer.writer.target_w
                     c = writer.writer.channels
@@ -158,7 +166,7 @@ def main(
                     metadata["tensor_shape_turbulence"] = [count, c, h, w]
             except Exception as e:
                 print(f"[Warning] Failed to read tensor shapes: {e}")
-            
+
             writer.close()
         if gui:
             gui.close()
@@ -166,11 +174,16 @@ def main(
 
     return metadata
 
+
 if __name__ == "__main__":
     # This block is now for testing a single case, not for batch processing.
     parser = argparse.ArgumentParser(description="Test runner for a single LBM case.")
-    parser.add_argument("--config", required=True, help="Path to the configuration YAML file.")
-    parser.add_argument("--mask", required=True, help="Path to the obstacle mask PNG file.")
+    parser.add_argument(
+        "--config", required=True, help="Path to the configuration YAML file."
+    )
+    parser.add_argument(
+        "--mask", required=True, help="Path to the obstacle mask PNG file."
+    )
     args = parser.parse_args()
 
     # For testing, we can define some dummy output paths.
