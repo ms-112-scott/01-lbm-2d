@@ -22,6 +22,7 @@
 LBM 的非平衡態矩（如應力張量）數值極小，直接轉 `float16` 會導致 Underflow (下溢位變成 0)，破壞物理特徵。
 
 - **兩階段處理 (Two-Pass Pipeline)：**
+  a
 
 1. **Pass 1 (計算全域統計)：** 掃描所有 `status == "Success"` 的案例，計算 9 個通道的 `Global_Mean` 與 `Global_Std`，並避開數值爆炸的 Failed Cases。
 2. **Pass 2 (正規化與儲存)：** 讀取數據 $\rightarrow$ Channel-wise 正規化 $(x - \mu) / \sigma$ $\rightarrow$ 轉型為 `float16` $\rightarrow$ 寫入 Zarr。
