@@ -47,19 +47,14 @@ def main():
 
     # --- SUCCESS TRACKER ---
     success_count = 0
-    # max_cases = 10
     # 4. Main execution loop
     for i, cfg_file in enumerate(config_files):
-        # if success_count >= max_cases:
-        #     print(
-        #         f"\n[Target Reached] Successfully completed {max_cases} cases. Stopping batch."
-        #     )
-        #     break
+
         job_id = i + 1
         full_config_path = os.path.join(project_paths["configs"], cfg_file)
 
         print(f"--- Running Job {job_id}/{len(config_files)}: {cfg_file} ---")
-
+        gc.collect()
         # Load config early to get pre-calculable info
         try:
             config = case_executor.utils.load_config(full_config_path)
