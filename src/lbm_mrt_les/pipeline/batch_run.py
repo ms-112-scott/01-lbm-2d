@@ -4,7 +4,8 @@ src/lbm_mrt_les/pipeline/batch_run.py
 Entry point for multi-case batch simulation.
 
 Usage:
-    python -m src.lbm_mrt_les.pipeline.batch_run --project_name <name>
+    python -m src.lbm_mrt_les.pipeline.batch_run --project_name <n>
+    python -m src.lbm_mrt_les.pipeline.batch_run --project_name <n> --max_success 20
 
 Output files written to outputs/<project_name>/plots/:
     all_cases_summary.json   – full structured summary (updated after every case)
@@ -29,9 +30,7 @@ def find_config_files(config_dir: str) -> List[str]:
         print(f"[Error] Config directory not found: {config_dir}")
         sys.exit(1)
 
-    config_files = sorted(
-        [f for f in os.listdir(config_dir) if f.endswith(".yaml")]
-    )
+    config_files = sorted([f for f in os.listdir(config_dir) if f.endswith(".yaml")])
 
     if not config_files:
         print(f"[Error] No YAML config files found in {config_dir}")
@@ -47,42 +46,70 @@ def main():
     parser.add_argument(
         "--project_name", type=str, required=True, help="The project name to run."
     )
+    parser.add_argument(
+        "--max_success",
+        type=int,
+        default=None,
+        help="Stop after this many successful cases (e.g. --max_success 20). "
+        "Failed cases do not count toward the limit. "
+        "Omit to run all configs.",
+    )
     args = parser.parse_args()
 
-    # ── 1. Resolve paths ────────────────────────────────────────────────────
+    max_success = args.max_success
+
+    # -- 1. Resolve paths ---------------------------------------------------
     project_paths = paths.get_project_paths(args.project_name)
 
-    # ── 2. Find configuration files ─────────────────────────────────────────
+    # -- 2. Find configuration files ----------------------------------------
     config_files = find_config_files(project_paths["configs"])
     print(f"Found {len(config_files)} cases for project '{args.project_name}'.")
+    if max_success is not None:
+        print(f"[Batch] Will stop after {max_success} successful cases.")
 
-    # ── 3. Set up output directory structure ────────────────────────────────
-    output_dirs  = paths.setup_output_directories(project_paths["outputs"])
+    # -- 3. Set up output directory structure --------------------------------
+    output_dirs = paths.setup_output_directories(project_paths["outputs"])
     summary_path = os.path.join(output_dirs["plots"], "all_cases_summary.json")
-    npz_path     = os.path.join(output_dirs["plots"], "all_cases_vectors.npz")
+    npz_path = os.path.join(output_dirs["plots"], "all_cases_vectors.npz")
     batch_io.init_summary_file(summary_path)
 
-    # ── 4. Main execution loop ───────────────────────────────────────────────
+    # -- 4. Main execution loop ----------------------------------------------
     success_count = 0
+    skipped_count = 0
 
     for i, cfg_file in enumerate(config_files):
+
+        # Early-exit check
+        if max_success is not None and success_count >= max_success:
+            skipped_count = len(config_files) - i
+            print(
+                f"\n[Batch] Reached max_success={max_success}. "
+                f"Skipping remaining {skipped_count} config(s)."
+            )
+            break
+
         job_id = i + 1
         full_config_path = os.path.join(project_paths["configs"], cfg_file)
 
-        print(f"\n--- Running Job {job_id}/{len(config_files)}: {cfg_file} ---")
+        progress = (
+            f"[success so far: {success_count}/{max_success}]"
+            if max_success is not None
+            else f"[success so far: {success_count}]"
+        )
+        print(f"\n--- Running Job {job_id}/{len(config_files)}: {cfg_file} {progress}")
         gc.collect()
 
         # Pre-write "Running" status so the JSON is never stale mid-batch
         try:
-            config   = case_executor.utils.load_config(full_config_path)
+            config = case_executor.utils.load_config(full_config_path)
             sim_name = config.get("simulation", {}).get("name", cfg_file)
-            nx       = config.get("simulation", {}).get("nx")
-            ny       = config.get("simulation", {}).get("ny")
+            nx = config.get("simulation", {}).get("nx")
+            ny = config.get("simulation", {}).get("ny")
 
             pre_summary = {
                 "case_name": sim_name,
-                "status":    "Running",
-                "job_id":    job_id,
+                "status": "Running",
+                "job_id": job_id,
                 "parameters": {"lattice": {"resolution_px": [nx, ny]}},
                 "source_files": {
                     "config_file": cfg_file,
@@ -108,9 +135,15 @@ def main():
         if summary_entry["status"] == "Success":
             success_count += 1
 
-    # ── 5. Post-batch: build NPZ feature matrix ──────────────────────────────
-    print(f"\n[Batch] {success_count}/{len(config_files)} cases succeeded.")
-    print(f"[Batch] Building ML feature vectors from summary …")
+    # -- 5. Post-batch: build NPZ feature matrix -----------------------------
+    total_ran = len(config_files) - skipped_count
+    print(
+        f"\n[Batch] Ran {total_ran} case(s): "
+        f"{success_count} succeeded, "
+        f"{total_ran - success_count} failed, "
+        f"{skipped_count} skipped (limit reached)."
+    )
+    print(f"[Batch] Building ML feature vectors from summary ...")
 
     try:
         build_npz(summary_path, npz_path)
@@ -118,8 +151,8 @@ def main():
         print(f"[Warning] NPZ build failed (summary JSON still valid): {e}")
 
     print(f"\n[Finished] All cases processed.")
-    print(f"  Summary  → {summary_path}")
-    print(f"  Vectors  → {npz_path}")
+    print(f"  Summary  -> {summary_path}")
+    print(f"  Vectors  -> {npz_path}")
 
 
 if __name__ == "__main__":

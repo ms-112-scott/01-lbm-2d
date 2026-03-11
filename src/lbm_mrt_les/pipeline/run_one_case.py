@@ -52,7 +52,6 @@ def init_simulation_env(
     # 4. Initialize the Video Recorder
     recorder = None
     if vid_cfg["enable"] and video_output_path:
-        # The runner is responsible for creating the directory
         os.makedirs(os.path.dirname(video_output_path), exist_ok=True)
         recorder = Video_Recorder(
             video_output_path, width=viz.width, height=viz.height, fps=vid_cfg["fps"]
@@ -62,7 +61,6 @@ def init_simulation_env(
     # 5. Initialize the HDF5 Dataset Writer
     writer = None
     if data_cfg["enable"] and h5_output_path:
-        # The runner is responsible for creating the directory
         writer = AsyncLBMCaseWriter(
             h5_output_path, config, solver.nx, solver.ny, mask_data=mask
         )
@@ -100,11 +98,38 @@ def main(
             config, mask_path, h5_output_path, video_output_path
         )
 
-        # 2. Determine simulation strategy
-        u_inlet_mag = np.linalg.norm(solver.u_inlet)
-        phys_suggested_steps, _ = utils.get_simulation_strategy(solver, u_inlet_mag)
-        cfg_max_steps = config["simulation"]["max_steps"]
-        max_steps = int(min(cfg_max_steps, phys_suggested_steps))
+        # 2. max_steps 直接從 config 讀取，不再呼叫 get_simulation_strategy。
+        #
+        # 原本的邏輯：
+        #   u_inlet_mag = np.linalg.norm(solver.u_inlet)   ← 讀到 dummy 0.05
+        #   phys_steps  = nx / 0.05 × 5 = 409600           ← 硬算出錯誤步數
+        #   max_steps   = min(cfg_max_steps, 409600)        ← 吃掉 config 設定
+        #
+        # solver.u_inlet 是從 boundary_condition.value[0] 讀的，
+        # 而 Zou-He 壓力邊界的 value 只是 dummy [0.05, 0.0]，不代表真實速度。
+        # 真實入口速度由 rho_in - rho_out 的壓差在執行時自動決定。
+        # 因此 get_simulation_strategy 的結果完全不可信，應直接使用 config。
+        #
+        # 同時修正 solver 的 Re 顯示：用 Bernoulli 估算取代 dummy u_inlet
+        sim_cfg = config["simulation"]
+        rho_in = sim_cfg["rho_in"]
+        rho_out = sim_cfg.get("rho_out", 1.0)
+        nu = sim_cfg["nu"]
+        l_char = sim_cfg["characteristic_length"]
+        delta_rho = rho_in - rho_out
+        u_estimated = (((2.0 / 3.0) * delta_rho) ** 0.5) if delta_rho > 0 else 0.01
+        re_estimated = u_estimated * l_char / nu if nu > 0 else float("inf")
+
+        max_steps = int(sim_cfg["max_steps"])
+
+        print(f"[Strategy] max_steps={max_steps:,}  (from config, CTU-based)")
+        print(
+            f"[Strategy] u_estimated={u_estimated:.5f} lu/step  Re_estimated={re_estimated:.1f}"
+        )
+        print(
+            f"[Strategy] warmup_steps={sim_cfg.get('warmup_steps', 0):,}  "
+            f"start_record={config['outputs'].get('start_record_step', 0):,}"
+        )
 
         # 3. Run the main simulation loop
         loop_metadata = ops.run_simulation_loop(
@@ -114,29 +139,32 @@ def main(
         # 4. Collect metadata for summary
         metadata.update(loop_metadata)
 
-        # If successful, add more detailed metadata for post-processing
         if metadata.get("status") == "Success":
             metadata["reason"] = "Completed successfully"
 
-            # Calculate actual Re based on measured max velocity at the end of simulation
-            vel_np = solver.vel.to_numpy()
-            # 入口面 (i=0 或 i=1)，取 x 方向速度的平均
-            inlet_u = float(np.mean(vel_np[1, 1:-1, 0]))  # 1:-1 排除上下牆
-            metadata["u_inlet_lattice_lu"] = inlet_u
+            # [FIX] 統一使用 inlet_u 這一個變數名，消除 measured_u NameError。
+            #
+            # 取入口面 (x=1 列) 的 y 方向平均 x 速度作為入口速度代表值。
+            # 使用 x=1 而非 x=0，因為 x=0 是邊界節點，
+            # collide_and_stream 的迴圈範圍是 1..nx-2，
+            # 邊界節點的分佈函數在每步由 apply_bc 更新但不參與碰撞，
+            # 取 x=1 的速度更能代表流入流場的真實速度。
+            vel_np = solver.vel.to_numpy()  # shape: [nx, ny, 2]
+            inlet_u = float(np.mean(vel_np[1, 1:-1, 0]))  # x 方向速度，排除上下牆
+
             l_char = config["simulation"]["characteristic_length"]
             nu = config["simulation"]["nu"]
-            actual_re = (measured_u * l_char) / nu if nu > 0 else float("inf")
+            actual_re = (inlet_u * l_char) / nu if nu > 0 else float("inf")
 
-            # Add detailed lattice-level outputs for physical scaling
+            # metadata 只寫一次，不重複覆蓋
+            metadata["u_inlet_lattice_lu"] = inlet_u
             metadata["reynolds_number_lattice_actual"] = actual_re
             metadata["l_char_lattice_px"] = l_char
-            metadata["u_inlet_lattice_lu"] = measured_u  # using max velocity
             metadata["nu_lattice_lu"] = nu
             metadata["nx"] = solver.nx
             metadata["ny"] = solver.ny
             metadata["total_steps_executed"] = metadata.get("final_steps", 0)
 
-            # File info
             metadata["h5_file"] = (
                 os.path.basename(h5_output_path) if h5_output_path else "N/A"
             )
@@ -150,12 +178,10 @@ def main(
         metadata["reason"] = str(e)
 
     finally:
-        # 4. Cleanup resources
         print("\n[System] Cleaning up resources...")
         if recorder:
             recorder.stop()
         if writer:
-            # Get tensor shapes before closing the writer
             try:
                 if hasattr(writer, "writer") and metadata.get("status") == "Success":
                     h = writer.writer.target_h
@@ -166,7 +192,6 @@ def main(
                     metadata["tensor_shape_turbulence"] = [count, c, h, w]
             except Exception as e:
                 print(f"[Warning] Failed to read tensor shapes: {e}")
-
             writer.close()
         if gui:
             gui.close()
@@ -176,7 +201,8 @@ def main(
 
 
 if __name__ == "__main__":
-    # This block is now for testing a single case, not for batch processing.
+    import argparse
+
     parser = argparse.ArgumentParser(description="Test runner for a single LBM case.")
     parser.add_argument(
         "--config", required=True, help="Path to the configuration YAML file."
@@ -186,8 +212,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # For testing, we can define some dummy output paths.
     test_h5_path = "outputs/test_run/test_case.h5"
     test_video_path = "outputs/test_run/test_case.mp4"
-
     main(args.config, args.mask, test_h5_path, test_video_path)

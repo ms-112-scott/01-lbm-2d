@@ -65,15 +65,21 @@ physical_constants:
 # 4. 物理與模擬控制
 # ==========================================
 physics_control:
-  rho_in_list: [1.010, 1.015, 1.020, 1.025, 1.030, 1.035] # 入口密度（壓力差）清單，取代原本的 re_list
-  rho_out: 1.0 # 出口密度（基準壓力）
-  nu: 0.01 # 固定的安全黏滯係數 (若需要也可以改成清單)
+  rho_in: 1.010 # 固定單一值，不做 list
+  rho_out: 1.000
+  nu_lb_list: # ← 這才是 Re 多樣性的唯一旋鈕
+    - 0.050 # Re ~130  @ L=80px   層流
+    - 0.020 # Re ~327             低湍流
+    - 0.010 # Re ~653             中湍流
+    - 0.007 # Re ~933             高湍流（tau=0.521，安全邊界）
   saves_per_physical_second: 20 # 每個物理秒儲存資料次數
 
   # 模擬時長控制 (單位: Flow Pass, 即流體穿過場域一次所需的步數)
-  warmup_passes: 1 # 暖機步數 (ramp-up)
-  total_passes: 6 # 總模擬步數
-  start_record_passes: 3 # 開始錄製數據的步數 (採樣後 3 passes)
+  # 資料集生成 建議標準（Reynolds stress 基本收斂）
+  warmup_passes: 8
+  start_record_passes: 20
+  total_passes: 50
+  # 資料窗口 = 30 CTU
 
 # ==========================================
 # 5. 基礎模擬模板
