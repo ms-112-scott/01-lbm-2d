@@ -78,13 +78,15 @@ code folder structure...
 │  │  │  ├─ LBM2D_MRT_LES.py
 │  │  │  ├─ __init__.py
 │  │  │  └─ simulation_ops.py
+│  │  ├─ engine/
+│  │  │  └─ lbm_solver/
 │  │  ├─ io/
-│  │  │  ├─ LBM_Writer.py
 │  │  │  ├─ NumpySafeJSONEncoder.py
-│  │  │  ├─ Video_Recorder.py
 │  │  │  ├─ __init__.py
 │  │  │  ├─ batch_io.py
-│  │  │  └─ case_vector_builder.py
+│  │  │  ├─ case_vector_builder.py
+│  │  │  ├─ lbm_writer.py
+│  │  │  └─ video_recorder.py
 │  │  ├─ pipeline/
 │  │  │  ├─ __init__.py
 │  │  │  ├─ batch_run.py
@@ -92,6 +94,7 @@ code folder structure...
 │  │  │  ├─ paths.py
 │  │  │  ├─ run_one_case.py
 │  │  │  └─ summary_builder.py
+│  │  ├─ runners/
 │  │  ├─ utils/
 │  │  │  ├─ __init__.py
 │  │  │  ├─ config_utils.py
@@ -107,6 +110,7 @@ code folder structure...
 │  ├─ post_process/
 │  │  └─ h5_to_zarr_pipeline.py
 │  └─ tools/
+│     ├─ hybrid_maps/
 │     ├─ map_gen/
 │     │  ├─ __init__.py
 │     │  ├─ shapes.py
@@ -4460,7 +4464,7 @@ def build_npz(summary_json_path: str, npz_output_path: str) -> str:
     return npz_output_path
 
 --------------------------------------------------------------------------------------------
-src\lbm_mrt_les\io\LBM_Writer.py
+src\lbm_mrt_les\io\lbm_writer.py
 import h5py
 import numpy as np
 import json
@@ -4790,7 +4794,7 @@ class NumpySafeJSONEncoder(json.JSONEncoder):
         return super(NumpySafeJSONEncoder, self).default(obj)
 
 --------------------------------------------------------------------------------------------
-src\lbm_mrt_les\io\Video_Recorder.py
+src\lbm_mrt_les\io\video_recorder.py
 import imageio_ffmpeg
 import subprocess
 import numpy as np

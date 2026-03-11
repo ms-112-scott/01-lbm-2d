@@ -39,7 +39,7 @@ import random
 import cv2
 import numpy as np
 from config_utils import get_sampled_value
-
+from scipy import ndimage
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 物理常數與穩定性閾值
@@ -155,27 +155,49 @@ def print_re_range_preview(
 
 def calc_l_char_from_png(png_path: str, invert: bool, nx: int, ny: int) -> int:
     """
-    直接從 mask PNG 計算 L_char（像素數），不依賴檔名。
-
-    定義與 physics_utils.calculate_characteristic_length 完全一致：
-      Y 軸方向上，被任意固體像素佔據的總投影長度。
-
-    讀取流程與 mask_utils._create_from_png 完全鏡像：
-      灰階讀取 → resize(nx, ny) → threshold 127 → invert 旗標 → transpose
-      invert=False → pixel < 127 是固體（黑色建築）
-      invert=True  → pixel > 127 是固體（白色建築）
+    L_char = 最大單一障礙物的 Y 軸跨度（像素）。
+    [修正] 改用連通域分析，不再用所有建築高度加總。
     """
     img = cv2.imread(png_path, cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise ValueError(f"無法讀取圖片：{png_path}")
-
     if img.shape != (ny, nx):
         img = cv2.resize(img, (nx, ny), interpolation=cv2.INTER_NEAREST)
 
     solid = (img > 127) if invert else (img < 127)
-    solid = solid.T  # → [nx, ny]（Taichi field 慣例）
-    y_occupied = np.any(solid, axis=0)  # Y 軸投影
-    return max(1, int(np.sum(y_occupied)))
+    solid = solid.T  # → [nx, ny]
+
+    labeled, n_features = ndimage.label(solid)
+    if n_features == 0:
+        return max(1, ny // 4)
+
+    max_l = 0
+    for label_id in range(1, n_features + 1):
+        region = labeled == label_id
+        y_indices = np.where(np.any(region, axis=0))[0]
+        if len(y_indices) > 0:
+            l = int(y_indices[-1] - y_indices[0] + 1)
+            max_l = max(max_l, l)
+
+    return max(1, max_l)
+
+
+def calc_max_blockage_from_png(png_path: str, invert: bool, nx: int, ny: int) -> float:
+    """
+    計算 mask 中最嚴重的 X 截面阻塞率。
+
+    對每個 x-column，計算固體像素佔 y 方向的比例。
+    取最大值作為最壞情況阻塞率。
+    """
+    img = cv2.imread(png_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return 0.0
+    img = cv2.resize(img, (nx, ny), interpolation=cv2.INTER_NEAREST)
+    solid = (img > 127) if invert else (img < 127)
+    solid = solid.T  # [nx, ny]
+    # 每個 x-column 的固體比例
+    blockage_per_x = np.mean(solid.astype(float), axis=1)  # shape [nx]
+    return float(np.max(blockage_per_x))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -385,36 +407,46 @@ def main():
         # ── nu_lb 取樣（Re 多樣性的來源）─────────────────────────────────
         nu_lb = get_sampled_nu(nu_lb_list)
 
-        # ── 物理可行性檢查 ─────────────────────────────────────────────────
-        ok, reason = check_feasibility(rho_in, rho_out, nu_lb)
-        if not ok:
-            print(f"  [Skip] {reason}\n")
-            skip_count += 1
-            continue
-
-        # ── 從 PNG 像素計算 L_char ─────────────────────────────────────────
+        # ── 從 PNG 計算 L_char 與最大阻塞率 ──────────────────────────
         try:
             l_char = calc_l_char_from_png(mask_path, mask_invert, nx_val, ny_val)
+            max_blockage = calc_max_blockage_from_png(
+                mask_path, mask_invert, nx_val, ny_val
+            )
         except Exception as e:
             print(f"  [Skip] 讀取 mask 失敗：{e}\n")
             skip_count += 1
             continue
 
-        # ── 速度與 Re 計算 ──────────────────────────────────────────────────
-        delta_rho = rho_in - rho_out
-        u_bernoulli = math.sqrt((2.0 / 3.0) * delta_rho) if delta_rho > 0 else 0.01
-        u_for_steps = u_bernoulli * U_STEP_FACTOR  # 保守版本，步數偏大
+        # ── 阻塞率感知 rho_in 調整 ─────────────────────────── [新增]
+        U_GAP_MAX = 0.20  # 間隙最大安全速度
+        MIN_OPEN_FRACTION = 0.15  # 極端阻塞防呆
+        open_fraction = max(MIN_OPEN_FRACTION, 1.0 - max_blockage)
+        u_inlet_safe = U_GAP_MAX * open_fraction
+        delta_rho_safe = (3.0 / 2.0) * u_inlet_safe**2
+        rho_in_case = min(rho_in, 1.0 + delta_rho_safe)
 
-        Re_lb = u_bernoulli * l_char / nu_lb  # = Re_phys（不變性）
+        if rho_in_case < rho_in - 1e-6:
+            print(
+                f"  [Blockage] max_blockage={max_blockage:.1%}  "
+                f"rho_in: {rho_in:.4f} → {rho_in_case:.4f}"
+            )
+
+        # ── 可行性檢查 ─────────────────────────────────────── [修正順序]
+        ok, reason = check_feasibility(rho_in_case, rho_out, nu_lb)
+        if not ok:
+            print(f"  [Skip] {reason}\n")
+            skip_count += 1
+            continue
+
+        # ── 速度與 Re（用調整後 rho_in）──────────────────────── [修正]
+        delta_rho = rho_in_case - rho_out
+        u_bernoulli = math.sqrt((2.0 / 3.0) * delta_rho) if delta_rho > 0 else 0.01
+        u_for_steps = u_bernoulli * U_STEP_FACTOR
+        Re_lb = u_bernoulli * l_char / nu_lb
         Ma = u_bernoulli / CS
 
-        # dx for display only（物理解析度，不影響模擬）
-        vel_scale = U_phys / u_bernoulli if u_bernoulli > 1e-9 else 0
-        dx_mm = (
-            (nu_air / (vel_scale * nu_lb)) * 1000 if (vel_scale * nu_lb) > 1e-9 else 0
-        )
-
-        # ── 步數計算（以 L_char / u_for_steps 的 CTU 為單位）──────────────
+        # ── 步數計算
         steps_per_ctu = int(l_char / u_for_steps) if u_for_steps > 0 else 10000
         warmup_steps = w_passes * steps_per_ctu
         max_steps = t_passes * steps_per_ctu
@@ -423,9 +455,9 @@ def main():
 
         print(
             f"  nu_lb={nu_lb:.4f}  L_char={l_char}px  u={u_bernoulli:.5f}  "
-            f"Ma={Ma:.4f}  Re={Re_lb:.0f}  dx={dx_mm:.4f}mm\n"
+            f"Ma={Ma:.4f}  Re={Re_lb:.0f}  blockage={max_blockage:.1%}\n"
             f"  CTU={steps_per_ctu:,}  warmup={warmup_steps:,}  "
-            f"max={max_steps:,}  start_rec={start_record_step:,}  interval={target_interval}"
+            f"max={max_steps:,}  rho_in={rho_in_case:.4f}"
         )
 
         # ── 組裝並寫出 YAML ────────────────────────────────────────────────
@@ -433,7 +465,7 @@ def main():
             "sim_name": sim_name,
             "nu_lb": nu_lb,
             "l_char": l_char,
-            "rho_in": rho_in,
+            "rho_in": rho_in_case,
             "rho_out": rho_out,
             "interval": target_interval,
             "mask_path": mask_path,

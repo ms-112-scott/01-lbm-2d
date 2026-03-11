@@ -1,7 +1,7 @@
 import numpy as np
 import taichi as ti
 import taichi.math as tm
-
+import math as _math
 
 ti.init(arch=ti.gpu)
 
@@ -54,15 +54,20 @@ class LBM2D_MRT_LES:
         self.rho_out_target = sim_cfg["rho_out"]
 
         # 3. 入口速度 (u_inlet) - 暫時保留供相容，但實際上入口速度將由模擬決定
-        bc_values = self.config["boundary_condition"]["value"]
-        self.u_inlet = np.array(bc_values[0], dtype=np.float32)
-        u_char = np.linalg.norm(self.u_inlet)
+        # 改用 Bernoulli 壓差估算入口速度
+        delta_rho = self.rho_in_target - self.rho_out_target
+        u_char = _math.sqrt(2.0 / 3.0 * delta_rho) if delta_rho > 1e-9 else 0.01
 
-        # 4. 初始雷諾數預估 (執行中會改變)
         if self.nu > 0:
             self.Re = (u_char * self.characteristic_length) / self.nu
         else:
             self.Re = float("inf")
+
+        print(
+            f"[Solver] Initialized: target rho_in={self.rho_in_target}, "
+            f"rho_out={self.rho_out_target}, "
+            f"u_est={u_char:.5f}, Re_est={self.Re:.1f}"
+        )
 
         print(
             f"[Solver] Initialized: target rho_in={self.rho_in_target}, rho_out={self.rho_out_target}, Initial Re est.={self.Re:.2f}"
@@ -85,7 +90,7 @@ class LBM2D_MRT_LES:
         self.sponge_w_x = zones["sponge_x"]  # Outlet Sponge
         self.sponge_w_in = zones["inlet_buffer"]  # Inlet Sponge
         self.sponge_w_y = zones["sponge_y"]  # Top/Bottom Sponge
-        self.sponge_strength = 2.0  # Sponge Strength
+        self.sponge_strength = zones["sponge_strength"]  # Sponge Strength
 
     #  init 子函式: 記憶體配置 (Fields)
     def _init_fields(self, mask_data):
@@ -492,38 +497,34 @@ class LBM2D_MRT_LES:
                         self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
                     )
 
-            elif self.bc_type[dr] == 1:  # Outlet (Zou-He Pressure)
+            elif self.bc_type[dr] == 1:  # Outlet (Zou-He Pressure at East)
                 if ibc == self.nx - 1:
-                    # Zou-He Pressure Boundary at East
                     rho_out = self.rho_out_target
-
-                    f0 = self.f_old[inb, jnb][0]
-                    f1 = self.f_old[inb, jnb][1]
-                    f2 = self.f_old[inb, jnb][2]
-                    f4 = self.f_old[inb, jnb][4]
-                    f5 = self.f_old[inb, jnb][5]
-                    f8 = self.f_old[inb, jnb][8]
-
                     ux = -1.0 + (f0 + f2 + f4 + 2.0 * (f1 + f5 + f8)) / rho_out
                     uy = 0.0
 
-                    f3 = f1 - (2.0 / 3.0) * rho_out * ux
-                    f6 = f8 - 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
-                    f7 = f5 + 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
+                    # [FIX] Backflow 防護：若出口檢測到回流，改用零梯度外推
+                    # 物理上正確：出口有回流代表流場不應被壓力 BC 強制，
+                    # 改用 copy-from-neighbor 避免非物理分佈函數。
+                    if ux < 0.0:
+                        self.vel[ibc, jbc] = self.vel[inb, jnb]
+                        self.rho[ibc, jbc] = rho_out
+                        self.f_old[ibc, jbc] = (
+                            self.f_eq(ibc, jbc)
+                            - self.f_eq(inb, jnb)
+                            + self.f_old[inb, jnb]
+                        )
+                    else:
+                        f3 = f1 - (2.0 / 3.0) * rho_out * ux
+                        f6 = f8 - 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
+                        f7 = f5 + 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
 
-                    self.rho[ibc, jbc] = rho_out
-                    self.vel[ibc, jbc] = tm.vec2(ux, uy)
-
-                    self.f_old[ibc, jbc] = self.f_eq(ibc, jbc)
-                    self.f_old[ibc, jbc][3] = f3
-                    self.f_old[ibc, jbc][6] = f6
-                    self.f_old[ibc, jbc][7] = f7
-                else:
-                    self.vel[ibc, jbc] = self.vel[inb, jnb]
-                    self.rho[ibc, jbc] = self.rho[inb, jnb]
-                    self.f_old[ibc, jbc] = (
-                        self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
-                    )
+                        self.rho[ibc, jbc] = rho_out
+                        self.vel[ibc, jbc] = tm.vec2(ux, uy)
+                        self.f_old[ibc, jbc] = self.f_eq(ibc, jbc)
+                        self.f_old[ibc, jbc][3] = f3
+                        self.f_old[ibc, jbc][6] = f6
+                        self.f_old[ibc, jbc][7] = f7
 
             elif self.bc_type[dr] == 2:  # Free-Slip (Symmetry / Specular)
                 # 邏輯：切向速度照抄鄰居 (Free)，法向速度設為 0 (Wall)

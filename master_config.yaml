@@ -118,6 +118,7 @@ template:
     invert: False # 是否反轉遮罩值
 
   domain_zones:
+    sponge_strength: 3.0 # Sponge Strength
     sponge_y: 64 # Y 方向 sponge layer 厚度
     sponge_x: 128 # X 方向 sponge layer 厚度
     buffer: 64 # 邊界 buffer 區域
