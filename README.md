@@ -55,7 +55,7 @@ Execute the main runner, referencing your `project_name`. The script will automa
 
 ```bash
 # Step 3: Run the full simulation batch for your project
-python -m src.lbm_mrt_les.pipeline.batch_run --project_name Urban-1
+python -m src.lbm_mrt_les.pipeline.batch_run --project_name Urban-1 --max_success 15
 
 
 ```

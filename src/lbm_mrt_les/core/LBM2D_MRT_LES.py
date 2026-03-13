@@ -84,13 +84,14 @@ class LBM2D_MRT_LES:
         self.viz_sigma = self.config["outputs"]["gui"]["gaussian_sigma"]
 
         # ==========================================
-        # [Fix] Sponge Layer Parameters from Config
+        # Sponge Layer Parameters from Config
         # ==========================================
         zones = self.config["domain_zones"]
-        self.sponge_w_x = zones["sponge_x"]  # Outlet Sponge
-        self.sponge_w_in = zones["inlet_buffer"]  # Inlet Sponge
-        self.sponge_w_y = zones["sponge_y"]  # Top/Bottom Sponge
-        self.sponge_strength = zones["sponge_strength"]  # Sponge Strength
+        self.sponge_w_in = max(1, zones["sponge_in"])  # 左側入口
+        self.sponge_w_out = max(1, zones["sponge_out"])  # 右側出口
+        self.sponge_w_top = max(1, zones["sponge_top"])  # 上
+        self.sponge_w_bot = max(1, zones["sponge_bot"])  # 下
+        self.sponge_strength = zones["sponge_strength"]
 
     #  init 子函式: 記憶體配置 (Fields)
     def _init_fields(self, mask_data):
@@ -359,30 +360,23 @@ class LBM2D_MRT_LES:
             # X 與 Y 方向阻尼取最大值疊加到 tau_eff
             # ============================================================
             # A. X 方向阻尼 (Outlet & Inlet)
+            # 四個邊界各自獨立
             damping_x = 0.0
-
-            # Outlet Sponge (右側出口)
-            if i > (self.nx - self.sponge_w_x):
-                coord = (i - (self.nx - self.sponge_w_x)) / self.sponge_w_x
+            if i > (self.nx - self.sponge_w_out):
+                coord = (i - (self.nx - self.sponge_w_out)) / self.sponge_w_out
                 damping_x = self.sponge_strength * (coord * coord)
-
-            # Inlet Sponge (左側入口，防止壓力波反射)
             elif i < self.sponge_w_in:
                 coord = (self.sponge_w_in - i) / self.sponge_w_in
                 damping_x = self.sponge_strength * (coord * coord)
 
-            # B. Y 方向阻尼 (Top & Bottom)
             damping_y = 0.0
-            # 下邊界區域
-            if j < self.sponge_w_y:
-                coord = (self.sponge_w_y - j) / self.sponge_w_y
+            if j < self.sponge_w_bot:
+                coord = (self.sponge_w_bot - j) / self.sponge_w_bot
                 damping_y = self.sponge_strength * (coord * coord)
-            # 上邊界區域
-            elif j > (self.ny - self.sponge_w_y):
-                coord = (j - (self.ny - self.sponge_w_y)) / self.sponge_w_y
+            elif j > (self.ny - self.sponge_w_top):
+                coord = (j - (self.ny - self.sponge_w_top)) / self.sponge_w_top
                 damping_y = self.sponge_strength * (coord * coord)
 
-            # C. 疊加阻尼 (取最大值，避免角落雙重計算)
             tau_eff += tm.max(damping_x, damping_y)
 
             # ============================================================
@@ -497,16 +491,22 @@ class LBM2D_MRT_LES:
                         self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
                     )
 
-            elif self.bc_type[dr] == 1:  # Outlet (Zou-He Pressure at East)
+            elif self.bc_type[dr] == 1:  # Outlet (Zou-He Pressure)
                 if ibc == self.nx - 1:
                     rho_out = self.rho_out_target
+                    f0 = self.f_old[inb, jnb][0]
+                    f1 = self.f_old[inb, jnb][1]
+                    f2 = self.f_old[inb, jnb][2]
+                    f4 = self.f_old[inb, jnb][4]
+                    f5 = self.f_old[inb, jnb][5]
+                    f8 = self.f_old[inb, jnb][8]
+
                     ux = -1.0 + (f0 + f2 + f4 + 2.0 * (f1 + f5 + f8)) / rho_out
                     uy = 0.0
 
-                    # [FIX] Backflow 防護：若出口檢測到回流，改用零梯度外推
-                    # 物理上正確：出口有回流代表流場不應被壓力 BC 強制，
-                    # 改用 copy-from-neighbor 避免非物理分佈函數。
+                    # [FIX] Backflow 防護
                     if ux < 0.0:
+                        # 改用零梯度外推，防止非物理分佈函數積累
                         self.vel[ibc, jbc] = self.vel[inb, jnb]
                         self.rho[ibc, jbc] = rho_out
                         self.f_old[ibc, jbc] = (

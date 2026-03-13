@@ -5,6 +5,7 @@ import json
 import numpy as np
 from datetime import datetime
 
+
 def load_config(path="config.yaml"):
     """讀取 YAML 設定檔"""
     try:
@@ -17,30 +18,28 @@ def load_config(path="config.yaml"):
         print(f"Error reading config: {e}")
         sys.exit(1)
 
+
 def get_zone_config(config):
-    """
-    定義阻尼層與安全區的物理座標
-    """
     nx = config["simulation"]["nx"]
     ny = config["simulation"]["ny"]
     zone_config = config["domain_zones"]
 
-    # 阻尼層配置
-    sponge_y = zone_config["sponge_y"]  # 上下阻尼厚度
-    sponge_x = zone_config["sponge_x"]  # 左右阻尼厚度
-
-    # 安全區 (ROI) 配置：切除阻尼層 + 額外緩衝
+    sponge_in = zone_config["sponge_in"]
+    sponge_out = zone_config["sponge_out"]
+    sponge_top = zone_config["sponge_top"]
+    sponge_bot = zone_config["sponge_bot"]
     buffer = zone_config["buffer"]
-    inlet_buffer = zone_config["inlet_buffer"]
 
-    roi_x_start = inlet_buffer
-    roi_x_end = nx - sponge_x - buffer
-    roi_y_start = sponge_y + buffer
-    roi_y_end = ny - sponge_y - buffer
+    roi_x_start = sponge_in + buffer
+    roi_x_end = nx - sponge_out - buffer
+    roi_y_start = sponge_bot + buffer
+    roi_y_end = ny - sponge_top - buffer
 
     return {
-        "sponge_y": sponge_y,
-        "sponge_x": sponge_x,
+        "sponge_in": sponge_in,
+        "sponge_out": sponge_out,
+        "sponge_top": sponge_top,
+        "sponge_bot": sponge_bot,
         "roi_x_start": roi_x_start,
         "roi_x_end": roi_x_end,
         "roi_y_start": roi_y_start,
@@ -48,6 +47,7 @@ def get_zone_config(config):
         "nx": nx,
         "ny": ny,
     }
+
 
 def save_case_metadata(json_path, case_id, metadata):
     """

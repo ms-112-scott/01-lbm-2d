@@ -8,9 +8,11 @@ from numcodecs import Blosc
 from typing import List, Dict, Tuple
 
 # --- Configuration ---
-JSON_PATH = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Hyper-1/plots/all_cases_summary.json")
-RAW_DIR = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Hyper-1/raw")
-OUTPUT_DIR = Path("C:/Users/User/Desktop/NCA_workspace/sim_dataset_zarr64")
+JSON_PATH = Path(
+    "C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Urban-1/plots/all_cases_summary.json"
+)
+RAW_DIR = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Urban-1/raw")
+OUTPUT_DIR = Path("C:/Users/User/Desktop/NCA_workspace/sim_dataset_Urban-1_zarr64")
 
 CHUNK_T, CHUNK_W = 100, 64
 V2_COMPRESSOR = Blosc(cname="zstd", clevel=5, shuffle=Blosc.BITSHUFFLE)

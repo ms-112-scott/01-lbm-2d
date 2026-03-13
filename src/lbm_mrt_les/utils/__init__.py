@@ -12,7 +12,6 @@ from .physics_utils import (
 )
 from ..visualization.viz_utils import (
     plot_mask,
-    plot_verification_results,
     calcu_gui_size,
     apply_resize,
     draw_zone_overlay,

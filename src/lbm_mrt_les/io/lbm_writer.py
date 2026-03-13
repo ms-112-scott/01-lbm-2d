@@ -24,21 +24,21 @@ class LBMCaseWriter:
         # [Strict Config] 1. 嚴格讀取裁剪參數
         # ---------------------------------------------------------
         zones = config["domain_zones"]
-        sponge_y = zones["sponge_y"]
-        sponge_x = zones["sponge_x"]
+        sponge_in = zones["sponge_in"]
+        sponge_out = zones["sponge_out"]
+        sponge_top = zones["sponge_top"]
+        sponge_bot = zones["sponge_bot"]
         buffer = zones["buffer"]
-        inlet_buffer = zones["inlet_buffer"]
 
         # ---------------------------------------------------------
         # [Slice Definition] 2. 定義切片範圍
         # ---------------------------------------------------------
         # User Logic: simulation_np[inlet_buffer : nx- sponge_x-buffer , sponge_y+ buffer: ny-buffer-sponge_y]
-        self.slice_x = slice(inlet_buffer, nx - sponge_x - buffer)
-        self.slice_y = slice(sponge_y + buffer, ny - buffer - sponge_y)
+        self.slice_x = slice(sponge_in, nx - sponge_out - buffer)
+        self.slice_y = slice(sponge_bot + buffer, ny - sponge_top - buffer)
 
-        # 計算裁剪後的原始尺寸
-        self.crop_w = (nx - sponge_x - buffer) - inlet_buffer
-        self.crop_h = (ny - buffer - sponge_y) - (sponge_y + buffer)
+        self.crop_w = (nx - sponge_out - buffer) - sponge_in
+        self.crop_h = (ny - sponge_top - buffer) - (sponge_bot + buffer)
 
         if self.crop_w <= 0 or self.crop_h <= 0:
             raise ValueError(
@@ -122,12 +122,12 @@ class LBMCaseWriter:
         self.running_sum = np.zeros(
             (channels, self.target_h, self.target_w), dtype=np.float64
         )
-        self.running_vel_sq_sum = np.zeros((self.target_h, self.target_w), dtype=np.float64)
-
-        self.sum_abs_vor = np.zeros(
+        self.running_vel_sq_sum = np.zeros(
             (self.target_h, self.target_w), dtype=np.float64
         )
-        
+
+        self.sum_abs_vor = np.zeros((self.target_h, self.target_w), dtype=np.float64)
+
         self.running_count = 0
         self.global_min = np.full(channels, np.inf)
         self.global_max = np.full(channels, -np.inf)
@@ -223,9 +223,11 @@ class LBMCaseWriter:
         mean_field = (self.running_sum / self.running_count).astype(np.float32)
         self.f.create_dataset("mean_vel_field", data=mean_field)
 
-        mean_vel_sq_field = (self.running_vel_sq_sum / self.running_count).astype(np.float32)
+        mean_vel_sq_field = (self.running_vel_sq_sum / self.running_count).astype(
+            np.float32
+        )
         self.f.create_dataset("mean_vel_sq_field", data=mean_vel_sq_field)
-        
+
         # 寫入累積渦度
         self.f.create_dataset("sum_vor", data=self.sum_abs_vor.astype(np.float32))
 

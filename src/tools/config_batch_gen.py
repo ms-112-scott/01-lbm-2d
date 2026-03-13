@@ -61,7 +61,7 @@ def save_yaml(config: dict, path: str) -> None:
 
 def load_mask_metadata(mask_dir: str) -> dict:
     """載入 metadata.json → {file_name: entry} dict。"""
-    json_path = os.path.join(mask_dir, "mask_metadata.json")
+    json_path = os.path.join(mask_dir, "metadata.json")
     if not os.path.exists(json_path):
         print(f"[Warning] metadata.json 不存在：{json_path}，將使用 template 預設值。")
         return {}
@@ -99,30 +99,19 @@ def validate_passes(sim_ctx: dict) -> None:
 
 
 def prescan_l_char(mask_files: list, sim_ctx: dict, mask_meta: dict) -> list:
-    """
-    掃描所有 mask，回傳 L_char 清單。
-
-    用 metadata 中的 nx/ny，確保與正式流程一致。
-    """
-    print(f"\n[Pre-scan] 讀取所有 {len(mask_files)} 個 mask 計算 L_char 範圍...")
     results = []
     for mp in mask_files:
         fname = os.path.basename(mp)
-        entry = mask_meta.get(fname, {})
-        nx = int(
-            entry.get(
-                "domain_W_total", sim_ctx["base_template"]["simulation"].get("nx", 4736)
-            )
-        )
-        ny = int(
-            entry.get(
-                "domain_H_total", sim_ctx["base_template"]["simulation"].get("ny", 2560)
-            )
-        )
+        entry = mask_meta.get(fname)
+        if entry is None:
+            print(f"  [Pre-scan Skip] {fname} 不在 metadata.json")
+            continue
         try:
+            nx = int(entry["domain_W_total"])
+            ny = int(entry["domain_H_total"])
             l = calc_l_char(mp, sim_ctx["mask_invert"], nx, ny)
             results.append(l)
-        except Exception as e:
+        except (KeyError, Exception) as e:
             print(f"  [Warning] {fname}: {e}")
     return results
 

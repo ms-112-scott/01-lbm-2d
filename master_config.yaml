@@ -2,125 +2,111 @@
 # 1. 批次處理與路徑設定
 # ==========================================
 settings:
-  project_name: "Urban-1" # 專案整體名稱，用於建立主要輸出資料夾
+  project_name: "Urban-1" # 專案名稱，用於建立 SimCases/<name>/ 目錄結構
+  blockage_buffer: 128 # 阻塞率計算時排除的右側緩衝（px），預設 128
 
 # ==========================================
-# 2. 地圖生成器設定
-# ==========================================
-map_generator:
-  domain:
-    height: 2048 # 計算域高度（像素 / lattice）
-    width: 4096 # 計算域寬度（像素 / lattice）
-
-  pinball:
-    shape: ["circle", "square", "triangle"] # 形狀選擇
-    center_x_ratio: 0.12
-    center_y_ratio: 0.5
-    size_ratio: [0.03, 0.07] # 形狀大小 (相對於 domain 短邊)
-    spacing_factor: [1.8, 3.5]
-    rotation_angle: [-45, 45] # 方形/三角形旋轉角度
-    triangle_orientation: ["vertex_left", "edge_left"] # 三角形朝向
-
-  tube_bank:
-    shape: ["circle", "square", "triangle"] # 形狀選擇
-    layout: ["staggered", "aligned"] # 排列方式
-    start_x_ratio: 0.30
-    end_x_ratio: 0.55
-    size_ratio: [0.03, 0.07] # 形狀大小 (相對於 domain 短邊)
-    num_rows: [3, 6]
-    num_cols: [4, 7]
-    jitter_amount: [10, 50]
-    rotation_angle: [-15, 15] # 方形/三角形旋轉角度
-    triangle_orientation: ["vertex_left", "edge_left"] # 三角形朝向
-
-  step_urban:
-    step_start_ratio: 0.55 # 階梯區起始 X 位置比例
-    step_width_ratio: 0.05 # 單一階梯寬度比例
-    step_height_ratio: [0.2, 0.45] # 階梯高度比例
-    block_start_ratio: 0.70 # 建築區起始 X 位置比例
-    block_end_ratio: 0.85 # 建築區結束 X 位置比例
-    rect_count: [5, 12] # 建築矩形數量
-    max_attempts: 200 # 嘗試生成建築的最大次數
-    min_distance: 64 # 建築物間最小距離（像素）
-    max_blockage_ratio: 1.0 # 最大阻塞比例限制
-    rotate_angle_max: [0, 30] # 建築物最大旋轉角度（度）
-    rect_size:
-      w: [50, 200] # 建築寬度
-      h: [50, 200] # 建築寬度
-
-  validation:
-    boundary_buffer: 10 # 邊界緩衝距離，用於合法性檢查
-
-  output:
-    invert_values: True # 是否反轉輸出 mask 的數值定義
-
-# ==========================================
-# 3. 物理常數與換算
+# 2. 物理常數與換算
 # ==========================================
 physical_constants:
   kinematic_viscosity_air_m2_s: 1.5e-5 # 空氣動黏滯係數（m²/s，20°C）
-  inlet_velocity_ms: [1.0, 3.0, 5.0, 7.5, 10.0, 15.0] # 宏觀物理世界入口風速（m/s）
+  inlet_velocity_ms: [1.0, 3.0, 5.0, 7.5, 10.0, 15.0] # 物理入口風速清單（m/s），取第一個值換算 dx
 
 # ==========================================
-# 4. 物理與模擬控制
+# 3. 物理與模擬控制
+#    由 config_batch_gen.py 讀取，批次生成各 case 的 YAML
 # ==========================================
 physics_control:
-  rho_in: 1.010 # 固定單一值，不做 list
-  rho_out: 1.000
-  nu_lb_list: # ← 這才是 Re 多樣性的唯一旋鈕
-    - 0.050 # Re ~130  @ L=80px   層流
-    - 0.020 # Re ~327             低湍流
-    - 0.010 # Re ~653             中湍流
-    - 0.007 # Re ~933             高湍流（tau=0.521，安全邊界）
-  saves_per_physical_second: 20 # 每個物理秒儲存資料次數
+  rho_in: 1.002 # 入口密度（格子單位）；u_bernoulli = sqrt(2/3 * Δρ) ≈ 0.058
+  rho_out: 1.000 # 出口密度（格子單位）；高阻塞率 case 會自動降低 rho_in
 
-  # 模擬時長控制 (單位: Flow Pass, 即流體穿過場域一次所需的步數)
-  # 資料集生成 建議標準（Reynolds stress 基本收斂）
-  warmup_passes: 8
-  start_record_passes: 20
-  total_passes: 50
-  # 資料窗口 = 30 CTU
+  # nu 候選清單：config_batch_gen 對每個 mask 加權隨機抽取一個可行 nu
+  # Re = u_bernoulli × L_char / nu_lb（L_char 由各 mask 幾何計算）
+  nu_lb_list:
+    - 0.050 # Re ~170  @ L=150px  過渡流
+    - 0.030 # Re ~290  @ L=150px  低湍流
+    - 0.020 # Re ~433  @ L=150px  中湍流（都市微氣候最低標準）
+    - 0.010 # Re ~866  @ L=150px  高湍流（街道峽谷換氣）
+    - 0.007 # Re ~1237 @ L=150px  極高湍流（配合較大 mask）
+
+  # 模擬時長（單位：CTU，Convective Time Unit = L_char / u_conservative）
+  # 步數由 config_batch_gen.py 動態計算：steps = passes × steps_per_ctu
+  warmup_passes: 8 # 暖機階段，不寫入資料集
+  start_record_passes: 20 # 開始錄製的 CTU 倍數（需 > warmup_passes）
+  total_passes:
+    50 # 總模擬 CTU 倍數（需 > start_record_passes）
+    # 有效資料窗口 = (total - start_record) × steps_per_ctu
+
+  saves_per_physical_second: 20 # 每 CTU 儲存幀數（config_batch_gen 讀作 saves_per_ctu）
+
+  smagorinsky_constant: 0.1 # LES Smagorinsky 常數 Cs（0 = 關閉 LES）
 
 # ==========================================
-# 5. 基礎模擬模板
+# 4. Case YAML 模板
+#    build_config() 對此區塊做 deep copy，再覆寫各 case 專屬參數
+#    nx / ny 由 metadata.json 的 domain_W_total / domain_H_total 覆寫
 # ==========================================
 template:
   simulation:
-    nx: 4096 # LBM 計算格點 X 方向數量
-    ny: 2048 # LBM 計算格點 Y 方向數量
-    # max_steps: 現在由 config_batch_gen.py 根據 total_passes 動態計算
-    ghost_moments_s: 1.2 # MRT ghost moments 參數
+    nx: 0 # 佔位，由 config_batch_gen 從 metadata.domain_W_total 覆寫
+    ny: 0 # 佔位，由 config_batch_gen 從 metadata.domain_H_total 覆寫
+    name: placeholder # 佔位，由 config_batch_gen 從 mask 檔名覆寫
+    nu: 0.0 # 佔位，由 config_batch_gen 從 nu_lb_list 取樣覆寫
+    ghost_moments_s: 1.2 # MRT ghost modes 鬆弛率（能量/熱通流）
+    characteristic_length: 0 # 佔位，由 config_batch_gen 從 mask 幾何計算覆寫
+    rho_in: 0.0 # 佔位，由 config_batch_gen 依阻塞率調整後覆寫
+    rho_out: 0.0 # 佔位，由 config_batch_gen 覆寫
+    smagorinsky_constant: 0.0 # 佔位，由 config_batch_gen 從 physics_control 覆寫
+    compute_step_size: 0 # 佔位，由 config_batch_gen 計算 interval 後覆寫
+    warmup_steps: 0 # 佔位，由 config_batch_gen 計算後覆寫
+    max_steps: 0 # 佔位，由 config_batch_gen 計算後覆寫
 
   outputs:
-    enable_profiling: False # 是否啟用效能分析
+    enable_profiling: False
 
     gui:
-      enable: False # 是否啟用即時 GUI 顯示
-      max_size: 1024 # GUI 顯示最大邊長
-      show_zone_overlay: True # 是否顯示 domain zone 疊圖
-      gaussian_sigma: 1.0 # GUI 顯示用高斯模糊 sigma
+      enable: False
+      max_size: 1024 # GUI 顯示最大邊長（px）
+      show_zone_overlay: True # 顯示 sponge / ROI 疊圖
+      gaussian_sigma: 1.0 # 速度場顯示用高斯模糊 sigma
+      interval_steps: 0 # 佔位，由 config_batch_gen 覆寫
 
     video:
-      enable: True # 是否輸出影片
-      fps: 30 # 影片幀率
+      enable: True
+      fps: 30
+      filename: placeholder.mp4 # 佔位，由 config_batch_gen 覆寫
+      interval_steps: 0 # 佔位，由 config_batch_gen 覆寫
 
     dataset:
-      enable: True # 是否儲存 HDF5 資料集
-      compression: "lzf" # HDF5 壓縮方式
-      save_resolution_height: 256 # 儲存解析度（高度）
+      enable: True
+      compression: "lzf" # HDF5 壓縮（lzf = 快速低壓縮，gzip = 高壓縮慢）
+      save_resolution_height: 256 # 輸出裁剪後縮放至此高度（px）
+      interval_steps: 0 # 佔位，由 config_batch_gen 覆寫
+
+    project_name: placeholder # 佔位，由 config_batch_gen 覆寫
+    data_save_root: placeholder # 佔位，由 config_batch_gen 覆寫
+    target_rho_in: 0.0 # 佔位，由 config_batch_gen 覆寫
+    start_record_step: 0 # 佔位，由 config_batch_gen 覆寫
 
   boundary_condition:
-    type: [0, 2, 1, 2] # 邊界條件：W,E,S,N（0:速度, 1:出口, 2:牆面）
+    type: [0, 2, 1, 2] # 四邊邊界型態：W=壓力入口, E=牆, S=出口, N=牆
+    value: [[0.05, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]] # dummy，由 config_batch_gen 覆寫
 
   mask:
-    enable: True # 是否啟用遮罩
-    type: "png" # 遮罩檔案格式
-    invert: False # 是否反轉遮罩值
+    enable: True
+    type: "png"
+    invert: False # False = 暗色(0)為固體；True = 亮色(255)為固體
+    path: "" # 佔位，由 config_batch_gen 從 mask 路徑覆寫
 
   domain_zones:
-    sponge_strength: 3.0 # Sponge Strength
-    sponge_y: 64 # Y 方向 sponge layer 厚度
-    sponge_x: 128 # X 方向 sponge layer 厚度
-    buffer: 64 # 邊界 buffer 區域
-    inlet_buffer: 128 # 入口專用 buffer 區域
-
+    # 四邊 sponge 寬度（px），由 config_batch_gen 從 metadata.pad_* 計算覆寫：
+    #   sponge_in  = pad_left  - buffer
+    #   sponge_out = pad_right - buffer
+    #   sponge_top = pad_top   - buffer
+    #   sponge_bot = pad_bot   - buffer
+    sponge_in: 0 # 佔位，左側入口阻尼寬度
+    sponge_out: 0 # 佔位，右側出口阻尼寬度
+    sponge_top: 0 # 佔位，上邊阻尼寬度
+    sponge_bot: 0 # 佔位，下邊阻尼寬度
+    buffer: 128 # ROI 與 sponge 之間的額外安全緩衝（px）
+    sponge_strength: 3.0 # 阻尼強度係數（damping = strength × coord²）

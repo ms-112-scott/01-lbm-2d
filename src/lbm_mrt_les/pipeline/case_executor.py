@@ -25,6 +25,7 @@ from .run_one_case import main as run_one_case_main
 # Cleanup helper
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _cleanup_failed_outputs(h5_path: str, video_path: str) -> None:
     """
     Removes the .h5 and .mp4 files produced by a failed simulation run so
@@ -55,6 +56,7 @@ def _cleanup_failed_outputs(h5_path: str, video_path: str) -> None:
 # Main executor
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def execute_case(
     full_config_path: str,
     project_paths: Dict,
@@ -68,9 +70,9 @@ def execute_case(
     """
     # Initialise path variables at the top-level scope so the except block can
     # reference them for cleanup even if the error occurred mid-construction.
-    h5_path    = ""
+    h5_path = ""
     video_path = ""
-    sim_name   = os.path.basename(full_config_path)  # fallback display name
+    sim_name = os.path.basename(full_config_path)  # fallback display name
 
     try:
         config = utils.load_config(full_config_path)
@@ -78,8 +80,6 @@ def execute_case(
         # ── 1. Extract info and construct output paths ────────────────────
         mask_path_from_cfg = config.get("mask", {}).get("path")
         sim_name = config.get("simulation", {}).get("name", sim_name)
-        rho_in   = config.get("simulation", {}).get("rho_in")
-        rho_out  = config.get("simulation", {}).get("rho_out")
 
         mask_path = os.path.join(
             project_paths["masks"], os.path.basename(mask_path_from_cfg)
@@ -87,9 +87,8 @@ def execute_case(
         if not os.path.exists(mask_path):
             raise FileNotFoundError(f"Mask file not found: {mask_path}")
 
-        base_filename = f"Case{job_id:02d}_{sim_name}_rho{rho_in}_out{rho_out}"
-        h5_path    = os.path.join(output_dirs["raw"], f"{base_filename}.h5")
-        video_path = os.path.join(output_dirs["vis"], f"{base_filename}.mp4")
+        h5_path = os.path.join(output_dirs["raw"], f"{sim_name}.h5")
+        video_path = os.path.join(output_dirs["vis"], f"{sim_name}.mp4")
 
         # ── 2. Run the core simulation ────────────────────────────────────
         lattice_metadata = run_one_case_main(
@@ -97,9 +96,7 @@ def execute_case(
         )
 
         if lattice_metadata.get("status") != "Success":
-            raise RuntimeError(
-                f"Simulation failed: {lattice_metadata.get('reason')}"
-            )
+            raise RuntimeError(f"Simulation failed: {lattice_metadata.get('reason')}")
 
         # ── 3. Physical scaling & summary ────────────────────────────────
         physical_params = physics_scaling.calculate_physical_params(
@@ -108,7 +105,7 @@ def execute_case(
 
         source_files = {
             "config_file": os.path.basename(full_config_path),
-            "mask_file":   os.path.basename(mask_path),
+            "mask_file": os.path.basename(mask_path),
         }
 
         summary_entry = summary_builder.build_summary_entry(
@@ -128,6 +125,6 @@ def execute_case(
 
         return {
             "case_name": sim_name,
-            "status":    "Failed",
-            "reason":    str(e),
+            "status": "Failed",
+            "reason": str(e),
         }
