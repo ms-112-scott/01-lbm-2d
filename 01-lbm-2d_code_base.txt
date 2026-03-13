@@ -57,12 +57,10 @@ code folder structure...
 │  │  ├─ 01_高雷諾數穩定性修正建議.md
 │  │  ├─ 02_核心求解器修正報告_20260221.md
 │  │  ├─ 03_修改入口為壓力邊界驅動
-│  │  └─ 04_260311_bug_fix.md
+│  │  ├─ 04_260311_bug_fix.md
+│  │  └─ 05_260311 stability analysis.md
 │  └─ gemini/
 │     └─ hdf5_output_structure.md
-├─ mask/
-│  ├─ .js
-│  └─ map_gen_config.json
 ├─ notebooks/
 │  ├─ LHS_sampling.ipynb
 │  ├─ Re_calcu.ipynb
@@ -78,15 +76,13 @@ code folder structure...
 │  │  │  ├─ LBM2D_MRT_LES.py
 │  │  │  ├─ __init__.py
 │  │  │  └─ simulation_ops.py
-│  │  ├─ engine/
-│  │  │  └─ lbm_solver/
 │  │  ├─ io/
+│  │  │  ├─ LBM_Writer.py
 │  │  │  ├─ NumpySafeJSONEncoder.py
+│  │  │  ├─ Video_Recorder.py
 │  │  │  ├─ __init__.py
 │  │  │  ├─ batch_io.py
-│  │  │  ├─ case_vector_builder.py
-│  │  │  ├─ lbm_writer.py
-│  │  │  └─ video_recorder.py
+│  │  │  └─ case_vector_builder.py
 │  │  ├─ pipeline/
 │  │  │  ├─ __init__.py
 │  │  │  ├─ batch_run.py
@@ -94,7 +90,6 @@ code folder structure...
 │  │  │  ├─ paths.py
 │  │  │  ├─ run_one_case.py
 │  │  │  └─ summary_builder.py
-│  │  ├─ runners/
 │  │  ├─ utils/
 │  │  │  ├─ __init__.py
 │  │  │  ├─ config_utils.py
@@ -110,7 +105,18 @@ code folder structure...
 │  ├─ post_process/
 │  │  └─ h5_to_zarr_pipeline.py
 │  └─ tools/
-│     ├─ hybrid_maps/
+│     ├─ config_utils/
+│     │  ├─ __init__.py
+│     │  ├─ blockage_adjuster.py
+│     │  ├─ config_assembler.py
+│     │  ├─ constants.py
+│     │  ├─ context.py
+│     │  ├─ feasibility.py
+│     │  ├─ geometry.py
+│     │  ├─ mask_io.py
+│     │  ├─ nu_sampler.py
+│     │  ├─ preview.py
+│     │  └─ steps_calc.py
 │     ├─ map_gen/
 │     │  ├─ __init__.py
 │     │  ├─ shapes.py
@@ -121,6 +127,7 @@ code folder structure...
 │     ├─ config_utils.py
 │     ├─ hybrid_map_gen.py
 │     ├─ mask_rect_gen.py
+│     ├─ rename_files.py
 │     └─ urban_map_generator.py
 ├─ .gitignore
 ├─ 01-lbm-2d_code_base.txt
@@ -3244,7 +3251,7 @@ src\lbm_mrt_les\core\LBM2D_MRT_LES.py
 import numpy as np
 import taichi as ti
 import taichi.math as tm
-
+import math as _math
 
 ti.init(arch=ti.gpu)
 
@@ -3297,15 +3304,20 @@ class LBM2D_MRT_LES:
         self.rho_out_target = sim_cfg["rho_out"]
 
         # 3. 入口速度 (u_inlet) - 暫時保留供相容，但實際上入口速度將由模擬決定
-        bc_values = self.config["boundary_condition"]["value"]
-        self.u_inlet = np.array(bc_values[0], dtype=np.float32)
-        u_char = np.linalg.norm(self.u_inlet)
+        # 改用 Bernoulli 壓差估算入口速度
+        delta_rho = self.rho_in_target - self.rho_out_target
+        u_char = _math.sqrt(2.0 / 3.0 * delta_rho) if delta_rho > 1e-9 else 0.01
 
-        # 4. 初始雷諾數預估 (執行中會改變)
         if self.nu > 0:
             self.Re = (u_char * self.characteristic_length) / self.nu
         else:
             self.Re = float("inf")
+
+        print(
+            f"[Solver] Initialized: target rho_in={self.rho_in_target}, "
+            f"rho_out={self.rho_out_target}, "
+            f"u_est={u_char:.5f}, Re_est={self.Re:.1f}"
+        )
 
         print(
             f"[Solver] Initialized: target rho_in={self.rho_in_target}, rho_out={self.rho_out_target}, Initial Re est.={self.Re:.2f}"
@@ -3328,7 +3340,7 @@ class LBM2D_MRT_LES:
         self.sponge_w_x = zones["sponge_x"]  # Outlet Sponge
         self.sponge_w_in = zones["inlet_buffer"]  # Inlet Sponge
         self.sponge_w_y = zones["sponge_y"]  # Top/Bottom Sponge
-        self.sponge_strength = 2.0  # Sponge Strength
+        self.sponge_strength = zones["sponge_strength"]  # Sponge Strength
 
     #  init 子函式: 記憶體配置 (Fields)
     def _init_fields(self, mask_data):
@@ -3737,9 +3749,7 @@ class LBM2D_MRT_LES:
 
             elif self.bc_type[dr] == 1:  # Outlet (Zou-He Pressure)
                 if ibc == self.nx - 1:
-                    # Zou-He Pressure Boundary at East
                     rho_out = self.rho_out_target
-
                     f0 = self.f_old[inb, jnb][0]
                     f1 = self.f_old[inb, jnb][1]
                     f2 = self.f_old[inb, jnb][2]
@@ -3750,23 +3760,27 @@ class LBM2D_MRT_LES:
                     ux = -1.0 + (f0 + f2 + f4 + 2.0 * (f1 + f5 + f8)) / rho_out
                     uy = 0.0
 
-                    f3 = f1 - (2.0 / 3.0) * rho_out * ux
-                    f6 = f8 - 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
-                    f7 = f5 + 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
+                    # [FIX] Backflow 防護
+                    if ux < 0.0:
+                        # 改用零梯度外推，防止非物理分佈函數積累
+                        self.vel[ibc, jbc] = self.vel[inb, jnb]
+                        self.rho[ibc, jbc] = rho_out
+                        self.f_old[ibc, jbc] = (
+                            self.f_eq(ibc, jbc)
+                            - self.f_eq(inb, jnb)
+                            + self.f_old[inb, jnb]
+                        )
+                    else:
+                        f3 = f1 - (2.0 / 3.0) * rho_out * ux
+                        f6 = f8 - 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
+                        f7 = f5 + 0.5 * (f2 - f4) - (1.0 / 6.0) * rho_out * ux
 
-                    self.rho[ibc, jbc] = rho_out
-                    self.vel[ibc, jbc] = tm.vec2(ux, uy)
-
-                    self.f_old[ibc, jbc] = self.f_eq(ibc, jbc)
-                    self.f_old[ibc, jbc][3] = f3
-                    self.f_old[ibc, jbc][6] = f6
-                    self.f_old[ibc, jbc][7] = f7
-                else:
-                    self.vel[ibc, jbc] = self.vel[inb, jnb]
-                    self.rho[ibc, jbc] = self.rho[inb, jnb]
-                    self.f_old[ibc, jbc] = (
-                        self.f_eq(ibc, jbc) - self.f_eq(inb, jnb) + self.f_old[inb, jnb]
-                    )
+                        self.rho[ibc, jbc] = rho_out
+                        self.vel[ibc, jbc] = tm.vec2(ux, uy)
+                        self.f_old[ibc, jbc] = self.f_eq(ibc, jbc)
+                        self.f_old[ibc, jbc][3] = f3
+                        self.f_old[ibc, jbc][6] = f6
+                        self.f_old[ibc, jbc][7] = f7
 
             elif self.bc_type[dr] == 2:  # Free-Slip (Symmetry / Specular)
                 # 邏輯：切向速度照抄鄰居 (Free)，法向速度設為 0 (Wall)
@@ -4464,7 +4478,7 @@ def build_npz(summary_json_path: str, npz_output_path: str) -> str:
     return npz_output_path
 
 --------------------------------------------------------------------------------------------
-src\lbm_mrt_les\io\lbm_writer.py
+src\lbm_mrt_les\io\LBM_Writer.py
 import h5py
 import numpy as np
 import json
@@ -4794,7 +4808,7 @@ class NumpySafeJSONEncoder(json.JSONEncoder):
         return super(NumpySafeJSONEncoder, self).default(obj)
 
 --------------------------------------------------------------------------------------------
-src\lbm_mrt_les\io\video_recorder.py
+src\lbm_mrt_les\io\Video_Recorder.py
 import imageio_ffmpeg
 import subprocess
 import numpy as np
@@ -4886,18 +4900,119 @@ Usage:
 Output files written to outputs/<project_name>/plots/:
     all_cases_summary.json   – full structured summary (updated after every case)
     all_cases_vectors.npz    – flat numeric feature matrix for ML downstream use
+
+Resume / skip logic:
+    - 若 all_cases_summary.json 已存在，啟動時讀取它
+    - case_name 已有 "Success" 或 "Failed" → 直接跳過（不重跑）
+    - case_name 狀態為 "Running" → 視為上次中斷，重新執行
+    - case_name 不在 summary → 正常執行
+    - 已完成的 Success 數量從 summary 讀取，計入 max_success 統計
 """
 
 import argparse
 import os
 import sys
 import gc
-from typing import List, Dict
+import json
+from typing import List, Dict, Set, Tuple
 
 from . import paths
 from . import case_executor
 from ..io import batch_io
 from ..io.case_vector_builder import build_npz
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Resume helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _load_existing_summary(summary_path: str) -> Dict[str, str]:
+    """
+    讀取現有 summary JSON，回傳 {case_name: status} 的 dict。
+    若 JSON 不存在或損毀則回傳空 dict。
+    """
+    if not os.path.exists(summary_path):
+        return {}
+    try:
+        with open(summary_path, "r", encoding="utf-8") as f:
+            entries = json.load(f)
+        result = {}
+        for entry in entries:
+            name = entry.get("case_name")
+            status = entry.get("status", "Unknown")
+            if name:
+                result[name] = status
+        return result
+    except Exception as e:
+        print(f"[Warning] Could not read existing summary ({e}). Starting fresh.")
+        return {}
+
+
+def _get_sim_name_from_config(config_path: str) -> str:
+    """
+    從 config YAML 快速讀取 simulation.name。
+    失敗時回傳空字串。
+    """
+    try:
+        import yaml
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        return cfg.get("simulation", {}).get("name", "")
+    except Exception:
+        return ""
+
+
+def _print_resume_plan(
+    config_files: List[str],
+    existing: Dict[str, str],
+    config_dir: str,
+) -> Tuple[int, Set[str]]:
+    """
+    掃描所有 config，印出 resume 計畫。
+    回傳 (already_success_count, skip_set)。
+    skip_set 包含所有「已完成（Success 或 Failed）」的 case_name，不會重跑。
+    """
+    skip_names: Set[str] = set()
+    already_success = 0
+
+    if not existing:
+        print("[Resume] No existing summary found. Starting from scratch.")
+        return 0, skip_names
+
+    print("[Resume] Existing summary found. Scanning for completed cases...")
+    for cfg_file in config_files:
+        full_path = os.path.join(config_dir, cfg_file)
+        sim_name = _get_sim_name_from_config(full_path)
+        if not sim_name:
+            continue
+        status = existing.get(sim_name)
+        if status == "Success":
+            skip_names.add(sim_name)
+            already_success += 1
+            print(f"  [Skip ✅] {sim_name}  ({cfg_file})  → already succeeded")
+        elif status == "Failed":
+            skip_names.add(sim_name)
+            print(
+                f"  [Skip ❌] {sim_name}  ({cfg_file})  → already failed, will not retry"
+            )
+        elif status == "Running":
+            print(
+                f"  [Retry ↩] {sim_name}  ({cfg_file})  → interrupted last time, will re-run"
+            )
+        # status is None (not in summary) → will run normally, no print needed
+
+    print(
+        f"\n[Resume] {len(skip_names)} case(s) will be skipped "
+        f"({already_success} previously successful).\n"
+    )
+    return already_success, skip_names
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Config discovery
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def find_config_files(config_dir: str) -> List[str]:
@@ -4915,6 +5030,11 @@ def find_config_files(config_dir: str) -> List[str]:
     return config_files
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Multi-case batch runner for LBM simulations."
@@ -4926,9 +5046,8 @@ def main():
         "--max_success",
         type=int,
         default=None,
-        help="Stop after this many successful cases (e.g. --max_success 20). "
-        "Failed cases do not count toward the limit. "
-        "Omit to run all configs.",
+        help="Stop after this many TOTAL successful cases (including previous runs). "
+        "Failed cases do not count. Omit to run all configs.",
     )
     args = parser.parse_args()
 
@@ -4939,43 +5058,81 @@ def main():
 
     # -- 2. Find configuration files ----------------------------------------
     config_files = find_config_files(project_paths["configs"])
-    print(f"Found {len(config_files)} cases for project '{args.project_name}'.")
-    if max_success is not None:
-        print(f"[Batch] Will stop after {max_success} successful cases.")
+    print(f"Found {len(config_files)} configs for project '{args.project_name}'.")
 
     # -- 3. Set up output directory structure --------------------------------
     output_dirs = paths.setup_output_directories(project_paths["outputs"])
     summary_path = os.path.join(output_dirs["plots"], "all_cases_summary.json")
     npz_path = os.path.join(output_dirs["plots"], "all_cases_vectors.npz")
-    batch_io.init_summary_file(summary_path)
 
-    # -- 4. Main execution loop ----------------------------------------------
-    success_count = 0
-    skipped_count = 0
+    # -- 4. Resume: read existing summary and determine skip set -------------
+    existing_summary = _load_existing_summary(summary_path)
+    already_success, skip_names = _print_resume_plan(
+        config_files, existing_summary, project_paths["configs"]
+    )
+
+    # 若 summary 不存在才初始化（避免覆蓋既有資料）
+    if not os.path.exists(summary_path):
+        batch_io.init_summary_file(summary_path)
+
+    # 檢查 max_success 是否已達成
+    if max_success is not None:
+        remaining_needed = max_success - already_success
+        if remaining_needed <= 0:
+            print(
+                f"[Batch] Already reached max_success={max_success} "
+                f"from previous runs ({already_success} successful). Nothing to do."
+            )
+            return
+        print(
+            f"[Batch] max_success={max_success}  "
+            f"(already={already_success}, still need={remaining_needed} more)"
+        )
+
+    # -- 5. Main execution loop ----------------------------------------------
+    new_success_count = 0  # 本次 session 新增的成功數
+    skipped_count = 0  # 因已完成而跳過的數量
 
     for i, cfg_file in enumerate(config_files):
-
-        # Early-exit check
-        if max_success is not None and success_count >= max_success:
-            skipped_count = len(config_files) - i
-            print(
-                f"\n[Batch] Reached max_success={max_success}. "
-                f"Skipping remaining {skipped_count} config(s)."
-            )
-            break
-
         job_id = i + 1
         full_config_path = os.path.join(project_paths["configs"], cfg_file)
 
+        # 快速取得 sim_name 用於 skip 判斷
+        sim_name_quick = _get_sim_name_from_config(full_config_path)
+
+        # ── Skip 判斷（Success 或 Failed 都跳過）───────────────────────
+        if sim_name_quick and sim_name_quick in skip_names:
+            status_str = existing_summary.get(sim_name_quick, "?")
+            icon = "✅" if status_str == "Success" else "❌"
+            print(
+                f"--- [{icon} Skip {job_id}/{len(config_files)}] "
+                f"{cfg_file}  ({status_str})"
+            )
+            skipped_count += 1
+            continue
+
+        # ── max_success 達標提前結束 ─────────────────────────────────────
+        total_success_so_far = already_success + new_success_count
+        if max_success is not None and total_success_so_far >= max_success:
+            remaining = len(config_files) - i
+            print(
+                f"\n[Batch] Reached max_success={max_success} "
+                f"(previous={already_success}, new this session={new_success_count}). "
+                f"Stopping. {remaining} config(s) not run."
+            )
+            break
+
+        # ── 執行 ──────────────────────────────────────────────────────────
+        total_success_so_far = already_success + new_success_count
         progress = (
-            f"[success so far: {success_count}/{max_success}]"
+            f"[success: {total_success_so_far}/{max_success}]"
             if max_success is not None
-            else f"[success so far: {success_count}]"
+            else f"[success so far: {total_success_so_far}]"
         )
         print(f"\n--- Running Job {job_id}/{len(config_files)}: {cfg_file} {progress}")
         gc.collect()
 
-        # Pre-write "Running" status so the JSON is never stale mid-batch
+        # Pre-write "Running" status（crash-safe：重啟時可識別中斷點）
         try:
             config = case_executor.utils.load_config(full_config_path)
             sim_name = config.get("simulation", {}).get("name", cfg_file)
@@ -5000,27 +5157,29 @@ def main():
 
         gc.collect()
 
-        # Run the case (cleanup of failed outputs happens inside execute_case)
+        # Run the case
         summary_entry = case_executor.execute_case(
             full_config_path, project_paths, output_dirs, job_id
         )
 
-        # Persist the result immediately (crash-safe: every case is flushed)
+        # Persist result immediately（每個 case 完成都立刻寫入，崩潰安全）
         batch_io.update_summary_file(summary_entry, summary_path)
 
         if summary_entry["status"] == "Success":
-            success_count += 1
+            new_success_count += 1
 
-    # -- 5. Post-batch: build NPZ feature matrix -----------------------------
-    total_ran = len(config_files) - skipped_count
-    print(
-        f"\n[Batch] Ran {total_ran} case(s): "
-        f"{success_count} succeeded, "
-        f"{total_ran - success_count} failed, "
-        f"{skipped_count} skipped (limit reached)."
-    )
-    print(f"[Batch] Building ML feature vectors from summary ...")
+    # -- 6. Post-batch summary -----------------------------------------------
+    total_success = already_success + new_success_count
 
+    print(f"\n{'='*60}")
+    print(f"[Batch] Session complete.")
+    print(f"  Previously successful : {already_success}")
+    print(f"  New this session      : {new_success_count}")
+    print(f"  Total successful      : {total_success}")
+    print(f"  Skipped (done)        : {skipped_count}")
+    print(f"{'='*60}")
+
+    print(f"\n[Batch] Building ML feature vectors from summary ...")
     try:
         build_npz(summary_path, npz_path)
     except Exception as e:
@@ -5063,6 +5222,7 @@ from .run_one_case import main as run_one_case_main
 # Cleanup helper
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _cleanup_failed_outputs(h5_path: str, video_path: str) -> None:
     """
     Removes the .h5 and .mp4 files produced by a failed simulation run so
@@ -5093,6 +5253,7 @@ def _cleanup_failed_outputs(h5_path: str, video_path: str) -> None:
 # Main executor
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def execute_case(
     full_config_path: str,
     project_paths: Dict,
@@ -5106,9 +5267,9 @@ def execute_case(
     """
     # Initialise path variables at the top-level scope so the except block can
     # reference them for cleanup even if the error occurred mid-construction.
-    h5_path    = ""
+    h5_path = ""
     video_path = ""
-    sim_name   = os.path.basename(full_config_path)  # fallback display name
+    sim_name = os.path.basename(full_config_path)  # fallback display name
 
     try:
         config = utils.load_config(full_config_path)
@@ -5116,8 +5277,6 @@ def execute_case(
         # ── 1. Extract info and construct output paths ────────────────────
         mask_path_from_cfg = config.get("mask", {}).get("path")
         sim_name = config.get("simulation", {}).get("name", sim_name)
-        rho_in   = config.get("simulation", {}).get("rho_in")
-        rho_out  = config.get("simulation", {}).get("rho_out")
 
         mask_path = os.path.join(
             project_paths["masks"], os.path.basename(mask_path_from_cfg)
@@ -5125,9 +5284,8 @@ def execute_case(
         if not os.path.exists(mask_path):
             raise FileNotFoundError(f"Mask file not found: {mask_path}")
 
-        base_filename = f"Case{job_id:02d}_{sim_name}_rho{rho_in}_out{rho_out}"
-        h5_path    = os.path.join(output_dirs["raw"], f"{base_filename}.h5")
-        video_path = os.path.join(output_dirs["vis"], f"{base_filename}.mp4")
+        h5_path = os.path.join(output_dirs["raw"], f"{sim_name}.h5")
+        video_path = os.path.join(output_dirs["vis"], f"{sim_name}.mp4")
 
         # ── 2. Run the core simulation ────────────────────────────────────
         lattice_metadata = run_one_case_main(
@@ -5135,9 +5293,7 @@ def execute_case(
         )
 
         if lattice_metadata.get("status") != "Success":
-            raise RuntimeError(
-                f"Simulation failed: {lattice_metadata.get('reason')}"
-            )
+            raise RuntimeError(f"Simulation failed: {lattice_metadata.get('reason')}")
 
         # ── 3. Physical scaling & summary ────────────────────────────────
         physical_params = physics_scaling.calculate_physical_params(
@@ -5146,7 +5302,7 @@ def execute_case(
 
         source_files = {
             "config_file": os.path.basename(full_config_path),
-            "mask_file":   os.path.basename(mask_path),
+            "mask_file": os.path.basename(mask_path),
         }
 
         summary_entry = summary_builder.build_summary_entry(
@@ -5166,8 +5322,8 @@ def execute_case(
 
         return {
             "case_name": sim_name,
-            "status":    "Failed",
-            "reason":    str(e),
+            "status": "Failed",
+            "reason": str(e),
         }
 
 --------------------------------------------------------------------------------------------
@@ -6340,9 +6496,11 @@ from numcodecs import Blosc
 from typing import List, Dict, Tuple
 
 # --- Configuration ---
-JSON_PATH = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Hyper-1/plots/all_cases_summary.json")
-RAW_DIR = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Hyper-1/raw")
-OUTPUT_DIR = Path("C:/Users/User/Desktop/NCA_workspace/sim_dataset_zarr64")
+JSON_PATH = Path(
+    "C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Urban-1/plots/all_cases_summary.json"
+)
+RAW_DIR = Path("C:/Users/User/Desktop/NCA_workspace/01-lbm-2d/outputs/Urban-1/raw")
+OUTPUT_DIR = Path("C:/Users/User/Desktop/NCA_workspace/sim_dataset_Urban-1_zarr64")
 
 CHUNK_T, CHUNK_W = 100, 64
 V2_COMPRESSOR = Blosc(cname="zstd", clevel=5, shuffle=Blosc.BITSHUFFLE)
@@ -6631,249 +6789,47 @@ src/tools/config_batch_gen.py
 
 從 master_config.yaml 批量生成每個 case 的 YAML 設定檔。
 
-設計原則：
-  - mask 檔名僅作為排序依據（流水號），不從檔名傳遞任何物理資訊
-  - L_char 直接從 PNG 像素計算（與 physics_utils.calculate_characteristic_length 一致）
-  - Re 多樣性由 nu_lb_list 控制，每個 case 隨機取樣不同 nu 達到多種 Re
-  - 執行前列印完整的 Re 可達範圍表，方便調參
-
-【Re 的核心公式】
-  Re = u_lb × L_char / nu_lb         (格子空間，dimensionless)
-     = U_phys × L_phys / nu_air      (物理空間，完全相等)
-
-  → rho_in 不影響 Re，只影響 dx（物理解析度）和 dt（時間步）
-  → Re 的唯一有效旋鈕是 nu_lb 和 L_char
-  → 想要 Re 多樣性，必須讓 nu_lb 跨越多個數量級
-
-【master_config.yaml 建議新增】
-  physics_control:
-    nu_lb_list:
-      - 0.050   # Re 低 (~130 @ L=80px)   層流
-      - 0.020   # Re 中 (~327)             低湍流
-      - 0.010   # Re 中高 (~653)           中湍流
-      - 0.007   # Re 高 (~933)             高湍流
-    rho_in: 1.010     # 固定單一值，不做多樣性
+資料流：
+  master_config.yaml
+    → build_sim_context()  → sim_ctx  (全域共享)
+    ┌── for each mask:
+    │     metadata.json entry
+    │       → build_mask_context()   → mask_ctx
+    │       → fill_geometry()        → mask_ctx["l_char"], ["max_blockage"]
+    │     {}
+    │       → fill_blockage_adj()    → case_result["rho_in_case", ...]
+    │       → fill_nu_sample()       → case_result["nu_lb", "nu_re_pairs"]
+    │       → fill_physics_and_steps()→ case_result["Re", "steps_per_ctu", ...]
+    │       → build_config()         → (yaml_dict, output_path)
+    │       → save YAML
+    └──
 """
 
 import yaml
 import os
 import sys
 import glob
-import copy
 import argparse
-import math
-import random
+import json
 
-import cv2
 import numpy as np
-from config_utils import get_sampled_value
+
+from config_utils import (
+    build_sim_context,
+    build_mask_context,
+    fill_geometry,
+    fill_blockage_adj,
+    fill_nu_sample,
+    fill_physics_and_steps,
+    build_config,
+    calc_l_char,
+    print_re_preview,
+    print_summary,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 物理常數與穩定性閾值
-# ─────────────────────────────────────────────────────────────────────────────
-
-CS2 = 1.0 / 3.0
-CS = math.sqrt(CS2)  # ≈ 0.5774 lu/step
-
-MA_LIMIT = 0.17  # 對應 u_max ≈ 0.098 lu/step，最大安全 Δρ ≈ 0.015
-TAU_MIN = 0.52  # nu_min ≈ 0.0067
-U_STEP_FACTOR = 0.6  # Bernoulli 高估修正：保守速度 = u_bernoulli × 0.6
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Re 範圍預覽（執行前印出，方便調參）
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def print_re_range_preview(
-    rho_in: float,
-    rho_out: float,
-    nu_lb_list: list,
-    l_char_range: tuple,
-    U_phys: float,
-    nu_air: float,
-):
-    """
-    列印所有 nu_lb × L_char 組合的 Re 範圍預覽表。
-    讓使用者在跑批次之前確認 Re 分佈是否達到目標多樣性。
-
-    Re 不變性說明：
-      Re_lattice = u_lb × L_char(px) / nu_lb
-      Re_physical = U_phys × L_phys(m) / nu_air
-      兩者永遠相等，因為 dx 的定義保證了這一點。
-    """
-    delta_rho = rho_in - rho_out
-    u_lb = math.sqrt(2 / 3 * delta_rho) if delta_rho > 0 else 0.01
-    Ma = u_lb / CS
-    l_min, l_max = l_char_range
-    # 展示用的代表 L_char 值
-    l_samples = []
-    step = max(1, (l_max - l_min) // 4)
-    v = l_min
-    while v <= l_max:
-        l_samples.append(v)
-        v += step
-    if l_max not in l_samples:
-        l_samples.append(l_max)
-
-    sep = "=" * 80
-
-    print(sep)
-    print("  Re 可達範圍預覽")
-    print(sep)
-    print(
-        f"  固定 rho_in={rho_in} → u_lb={u_lb:.5f}  Ma={Ma:.4f}  "
-        f"{'✅ 安全' if Ma <= MA_LIMIT else '❌ 危險'}"
-    )
-    print(f"  物理常數：U_phys={U_phys} m/s,  nu_air={nu_air:.2e} m²/s")
-    print(f"  mask L_char 預估範圍：{l_min} ~ {l_max} px")
-    print()
-
-    # ── 格子 Re 表 ─────────────────────────────────────────────────────────
-    print("  【格子 Re】  Re_lb = u_lb × L_char / nu_lb")
-    header = f"  {'nu_lb':>8}  {'tau':>6}  {'穩定':>4}"
-    for l in l_samples:
-        header += f"  L={l:>4}px"
-    print(header)
-    print("  " + "-" * (len(header) - 2))
-    for nu_lb in nu_lb_list:
-        tau = 3.0 * nu_lb + 0.5
-        ok = "✅" if tau >= TAU_MIN else "⚠️ "
-        row = f"  {nu_lb:>8.4f}  {tau:>6.4f}  {ok}"
-        for l in l_samples:
-            re = u_lb * l / nu_lb
-            row += f"  {re:>8.0f}"
-        print(row)
-
-    print()
-
-    # ── 物理 Re 表（與格子 Re 完全相同，但同時列印 dx 幫助理解物理意義）─
-    print("  【物理 Re】  Re_phys = U_phys × L_phys / nu_air  （= 格子 Re，Re 不變性）")
-    print("              dx = nu_air / (U_phys/u_lb × nu_lb)  每格對應的公尺數")
-    header2 = f"  {'nu_lb':>8}  {'dx (mm)':>9}"
-    for l in l_samples:
-        header2 += f"  L={l:>4}px"
-    print(header2)
-    print("  " + "-" * (len(header2) - 2))
-    for nu_lb in nu_lb_list:
-        vel_scale = U_phys / u_lb if u_lb > 1e-9 else 0
-        dx = nu_air / (vel_scale * nu_lb) if (vel_scale * nu_lb) > 1e-9 else 0
-        row = f"  {nu_lb:>8.4f}  {dx*1000:>9.4f}"
-        for l in l_samples:
-            re_phys = u_lb * l / nu_lb  # Re 不變性，與格子 Re 完全相等
-            row += f"  {re_phys:>8.0f}"
-        print(row)
-
-    print()
-
-    # ── 重要提示 ────────────────────────────────────────────────────────────
-    print("  ⚠️  重要提示：")
-    print("     - rho_in 不影響 Re！改 rho_in 只改 dx（物理解析度），Re 不變。")
-    print("     - 達到 Re 多樣性的唯一正確方式：在 nu_lb_list 中放多個不同 nu 值。")
-    print("     - 建議 nu_lb 跨越 0.007 ~ 0.050，覆蓋層流到高湍流。")
-    print(sep)
-    print()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 從 PNG 計算 L_char（像素）
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def calc_l_char_from_png(png_path: str, invert: bool, nx: int, ny: int) -> int:
-    """
-    直接從 mask PNG 計算 L_char（像素數），不依賴檔名。
-
-    定義與 physics_utils.calculate_characteristic_length 完全一致：
-      Y 軸方向上，被任意固體像素佔據的總投影長度。
-
-    讀取流程與 mask_utils._create_from_png 完全鏡像：
-      灰階讀取 → resize(nx, ny) → threshold 127 → invert 旗標 → transpose
-      invert=False → pixel < 127 是固體（黑色建築）
-      invert=True  → pixel > 127 是固體（白色建築）
-    """
-    img = cv2.imread(png_path, cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        raise ValueError(f"無法讀取圖片：{png_path}")
-
-    if img.shape != (ny, nx):
-        img = cv2.resize(img, (nx, ny), interpolation=cv2.INTER_NEAREST)
-
-    solid = (img > 127) if invert else (img < 127)
-    solid = solid.T  # → [nx, ny]（Taichi field 慣例）
-    y_occupied = np.any(solid, axis=0)  # Y 軸投影
-    return max(1, int(np.sum(y_occupied)))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 物理可行性檢查
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def check_feasibility(rho_in: float, rho_out: float, nu_lb: float) -> tuple:
-    """回傳 (ok: bool, reason: str)"""
-    delta_rho = rho_in - rho_out
-    u_bernoulli = math.sqrt((2.0 / 3.0) * delta_rho) if delta_rho > 0 else 0.0
-    Ma = u_bernoulli / CS
-    tau = 3.0 * nu_lb + 0.5
-
-    if Ma > MA_LIMIT:
-        max_safe_drho = 1.5 * CS2 * MA_LIMIT**2
-        return False, (
-            f"Ma={Ma:.4f} > {MA_LIMIT}  (u={u_bernoulli:.5f} lu/step, Δρ={delta_rho:.4f})。"
-            f"建議 rho_in ≤ {rho_out + max_safe_drho:.4f}。"
-        )
-    if tau < TAU_MIN:
-        return False, (
-            f"tau={tau:.4f} < {TAU_MIN}  (nu_lb={nu_lb:.5f})。"
-            f"請將 nu_lb 提高至 ≥ {(TAU_MIN - 0.5) / 3.0:.5f}。"
-        )
-    return True, ""
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Config 組裝
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def generate_case_config(
-    base_template: dict, run_params: dict, physical_constants: dict
-) -> dict:
-    config = copy.deepcopy(base_template)
-    config["physical_constants"] = physical_constants
-
-    config["simulation"]["name"] = run_params["sim_name"]
-    config["simulation"]["nu"] = float(f'{run_params["nu_lb"]:.6f}')
-    config["simulation"]["characteristic_length"] = float(run_params["l_char"])
-    config["simulation"]["rho_in"] = float(run_params["rho_in"])
-    config["simulation"]["rho_out"] = float(run_params["rho_out"])
-    config["simulation"]["compute_step_size"] = run_params["interval"]
-    config["simulation"]["warmup_steps"] = run_params["warmup_steps"]
-    config["simulation"]["max_steps"] = run_params["max_steps"]
-    config["simulation"]["smagorinsky_constant"] = 0.2
-
-    config["outputs"]["project_name"] = run_params["project_name"]
-    config["outputs"]["data_save_root"] = run_params["data_save_root"]
-    config["outputs"]["target_rho_in"] = float(run_params["rho_in"])
-    config["outputs"]["start_record_step"] = run_params["start_record_step"]
-    config["outputs"]["gui"]["interval_steps"] = run_params["interval"]
-    config["outputs"]["video"]["interval_steps"] = run_params["interval"]
-    config["outputs"]["video"]["filename"] = f'{run_params["sim_name"]}.mp4'
-    config["outputs"]["dataset"]["interval_steps"] = run_params["interval"]
-
-    if "folder" in config["outputs"]["dataset"]:
-        del config["outputs"]["dataset"]["folder"]
-
-    # Zou-He 壓力邊界 dummy velocity，實際速度由 rho_in/rho_out 壓差自決
-    config["boundary_condition"]["value"] = [[0.05, 0.0]] + [[0.0, 0.0]] * 3
-    config["mask"]["path"] = run_params["mask_path"]
-
-    return config
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# YAML helper
+# region I/O helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -6884,230 +6840,1154 @@ def load_yaml(path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def get_sampled_nu(nu_lb_list) -> float:
-    """
-    從 nu_lb_list 取樣一個 nu 值。
-    支援與 get_sampled_value 相同的格式（單值、list、range dict）。
-    若 nu_lb_list 是普通 Python list，直接 random.choice。
-    """
-    if isinstance(nu_lb_list, list):
-        return random.choice(nu_lb_list)
-    # 若是 dict（range 格式），復用 get_sampled_value
-    return get_sampled_value(nu_lb_list)
+def save_yaml(config: dict, path: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f, sort_keys=False, default_flow_style=None)
+
+
+def load_mask_metadata(mask_dir: str) -> dict:
+    """載入 metadata.json → {file_name: entry} dict。"""
+    json_path = os.path.join(mask_dir, "mask_metadata.json")
+    if not os.path.exists(json_path):
+        print(f"[Warning] metadata.json 不存在：{json_path}，將使用 template 預設值。")
+        return {}
+    with open(json_path, "r", encoding="utf-8") as f:
+        entries = json.load(f)
+    result = {e["file_name"]: e for e in entries}
+    print(f"[Info] Loaded mask metadata: {json_path} ({len(result)} entries)")
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main
+# region Validation
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Generate LBM configs from a master YAML."
+def validate_passes(sim_ctx: dict) -> None:
+    w, s, t = (
+        sim_ctx["warmup_passes"],
+        sim_ctx["start_record_passes"],
+        sim_ctx["total_passes"],
     )
-    parser.add_argument(
-        "-c",
-        "--config",
-        default="master_config.yaml",
-        help="Path to the master config file",
-    )
-    args = parser.parse_args()
-
-    master_cfg = load_yaml(args.config)
-    settings = master_cfg["settings"]
-    physics = master_cfg["physics_control"]
-    base_template = master_cfg["template"]
-    physical_constants = master_cfg["physical_constants"]
-
-    project_name = settings["project_name"]
-    project_dir = os.path.join("SimCases", project_name)
-    mask_dir = os.path.join(project_dir, "masks")
-    output_dir = os.path.join(project_dir, "configs")
-    data_save_root = os.path.join("outputs", project_name)
-
-    # ── physics_control 參數讀取 ──────────────────────────────────────────
-    rho_in = physics["rho_in"]  # 單一固定值（不再是 list）
-    rho_out = physics["rho_out"]
-    saves_per_ctu = physics["saves_per_physical_second"]
-    w_passes = physics["warmup_passes"]
-    t_passes = physics["total_passes"]
-    s_passes = physics["start_record_passes"]
-
-    # nu_lb_list：Re 多樣性的唯一旋鈕
-    # 若 master_config 仍使用舊的單一 "nu" 欄位，自動包裝成 list 保持相容
-    nu_lb_list = physics.get("nu_lb_list", None)
-    if nu_lb_list is None:
-        nu_single = physics.get("nu", 0.010)
-        nu_lb_list = [nu_single]
-        print(
-            f"[Info] 未找到 nu_lb_list，使用單一 nu={nu_single}。"
-            f"建議在 master_config.yaml 新增 nu_lb_list 以獲得 Re 多樣性。"
-        )
-
-    # 物理常數（用於 Re 預覽表）
-    phys_const = master_cfg.get("physical_constants", {})
-    U_phys_raw = phys_const.get("inlet_velocity_ms", 5.0)
-    U_phys = U_phys_raw[0] if isinstance(U_phys_raw, list) else U_phys_raw
-    nu_air = phys_const.get("kinematic_viscosity_air_m2_s", 1.5e-5)
-
-    # passes 邏輯防呆
-    if not (w_passes < s_passes < t_passes):
+    if not (w < s < t):
         print(
             f"[Error] passes 設定不合理：\n"
-            f"  warmup={w_passes}, start_record={s_passes}, total={t_passes}\n"
+            f"  warmup={w}, start_record={s}, total={t}\n"
             f"  必須滿足 warmup < start_record < total。\n"
             f"  若 start_record ≥ total，HDF5 內將完全沒有資料。"
         )
         sys.exit(1)
 
-    mask_invert = base_template.get("mask", {}).get("invert", False)
-    nx_val = base_template["simulation"]["nx"]
-    ny_val = base_template["simulation"]["ny"]
 
-    os.makedirs(output_dir, exist_ok=True)
+# ─────────────────────────────────────────────────────────────────────────────
+# region Pre-scan
+# ─────────────────────────────────────────────────────────────────────────────
 
-    mask_files = sorted(glob.glob(os.path.join(mask_dir, "*.png")))
+
+def prescan_l_char(mask_files: list, sim_ctx: dict, mask_meta: dict) -> list:
+    """
+    掃描所有 mask，回傳 L_char 清單。
+
+    用 metadata 中的 nx/ny，確保與正式流程一致。
+    """
+    print(f"\n[Pre-scan] 讀取所有 {len(mask_files)} 個 mask 計算 L_char 範圍...")
+    results = []
+    for mp in mask_files:
+        fname = os.path.basename(mp)
+        entry = mask_meta.get(fname, {})
+        nx = int(
+            entry.get(
+                "domain_W_total", sim_ctx["base_template"]["simulation"].get("nx", 4736)
+            )
+        )
+        ny = int(
+            entry.get(
+                "domain_H_total", sim_ctx["base_template"]["simulation"].get("ny", 2560)
+            )
+        )
+        try:
+            l = calc_l_char(mp, sim_ctx["mask_invert"], nx, ny)
+            results.append(l)
+        except Exception as e:
+            print(f"  [Warning] {fname}: {e}")
+    return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# region Per-mask 處理
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def process_mask(mask_path: str, meta_entry: dict, sim_ctx: dict) -> bool:
+    """
+    處理單一 mask，生成對應的 YAML config 檔。
+
+    流程：build_mask_context → fill_geometry → fill_blockage_adj
+          → fill_nu_sample → fill_physics_and_steps → build_config → save
+
+    Returns:
+        True → 成功，False → skip
+    """
+    # 建立 mask_ctx（含 nx/ny/pad_* 來自 metadata）
+    mask_ctx = build_mask_context(mask_path, meta_entry)
+
+    # 幾何計算（l_char, max_blockage）
+    try:
+        fill_geometry(mask_ctx, sim_ctx)
+    except Exception as e:
+        print(f"  [Skip] 讀取 mask 失敗：{e}\n")
+        return False
+
+    _log_mask(mask_ctx)
+
+    # case_result：各步驟依序填入
+    case_result = {}
+
+    fill_blockage_adj(case_result, mask_ctx, sim_ctx)
+    _log_blockage(case_result, sim_ctx)
+
+    if not fill_nu_sample(case_result, mask_ctx, sim_ctx):
+        return False
+    _log_nu(case_result)
+
+    fill_physics_and_steps(case_result, mask_ctx, sim_ctx)
+    _log_physics(case_result)
+
+    config, out_path = build_config(case_result, mask_ctx, sim_ctx)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    save_yaml(config, out_path)
+    print(
+        f"  -> Saved: {case_result['config_filename']}  (Re≈{case_result['Re']:.0f})\n"
+    )
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# region 日誌輔助
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _log_mask(mask_ctx: dict) -> None:
+    print(f"  [Mask] {mask_ctx['mask_stem']}  nx={mask_ctx['nx']}  ny={mask_ctx['ny']}")
+
+
+def _log_blockage(case_result: dict, sim_ctx: dict) -> None:
+    from config_utils.constants import U_GAP_MAX
+
+    rho_in = sim_ctx["rho_in"]
+    rho_in_case = case_result["rho_in_case"]
+    print(
+        f"  [Geometry]   L_char=?px  blockage={case_result.get('open_fraction', 0):.0%}"
+    )
+    if rho_in_case < rho_in - 1e-6:
+        print(
+            f"  [BlockageAdj] rho_in {rho_in:.5f} → {rho_in_case:.5f}  "
+            f"(u_safe={case_result['u_inlet_safe']:.5f}  u_gap_max={U_GAP_MAX:.2f})"
+        )
+    else:
+        print(f"  [BlockageAdj] rho_in={rho_in_case:.5f} (無需調整)")
+
+
+def _log_nu(case_result: dict) -> None:
+    pairs_str = ", ".join(
+        f"nu={n:.3f}→Re={re:.0f}" for n, re in case_result["nu_re_pairs"]
+    )
+    print(
+        f"  [NuSample]   可用 {len(case_result['nu_re_pairs'])} 個選項 "
+        f"[{pairs_str}]  → 選 nu={case_result['nu_lb']:.4f}"
+    )
+
+
+def _log_physics(case_result: dict) -> None:
+    print(
+        f"  tau={case_result['tau']:.4f}  u={case_result['u_bernoulli']:.5f}  "
+        f"Ma={case_result['Ma']:.4f}  Re={case_result['Re']:.0f}  "
+        f"dx={case_result['dx_mm']:.3f}mm\n"
+        f"  CTU={case_result['steps_per_ctu']:,}  "
+        f"warmup={case_result['warmup_steps']:,}  "
+        f"max={case_result['max_steps']:,}  "
+        f"start_rec={case_result['start_record_step']:,}  "
+        f"interval={case_result['interval']}"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# region Main
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def main():
+    MASTER_CONFIG_PATH = "master_config.yaml"
+
+    master_cfg = load_yaml(MASTER_CONFIG_PATH)
+    sim_ctx = build_sim_context(master_cfg)
+
+    validate_passes(sim_ctx)
+    os.makedirs(sim_ctx["output_dir"], exist_ok=True)
+
+    mask_files = sorted(glob.glob(os.path.join(sim_ctx["mask_dir"], "*.png")))
     if not mask_files:
-        print(f"[Error] No PNG files found in: {mask_dir}")
+        print(f"[Error] No PNG files found in: {sim_ctx['mask_dir']}")
         return
 
-    # ── 執行前：掃描所有 mask 的 L_char，印出完整 Re 預覽表 ───────────────
-    print(f"\n[Pre-scan] 讀取所有 {len(mask_files)} 個 mask 計算 L_char 範圍...")
-    l_char_all = []
-    for mp in mask_files:
-        try:
-            l = calc_l_char_from_png(mp, mask_invert, nx_val, ny_val)
-            l_char_all.append(l)
-        except Exception:
-            pass
+    mask_meta = load_mask_metadata(sim_ctx["mask_meta_dir"])
 
-    l_min = min(l_char_all) if l_char_all else nx_val // 4
-    l_max = max(l_char_all) if l_char_all else nx_val // 2
+    # Pre-scan → Re 預覽表
+    l_char_all = prescan_l_char(mask_files, sim_ctx, mask_meta)
+    if not l_char_all:
+        print("[Error] 無法讀取任何 mask，請確認路徑與格式。")
+        return
+
+    l_min, l_max = min(l_char_all), max(l_char_all)
     print(
-        f"[Pre-scan] L_char 範圍：{l_min} ~ {l_max} px  (共 {len(l_char_all)} 個有效 mask)"
+        f"[Pre-scan] L_char 範圍：{l_min} ~ {l_max} px  "
+        f"(平均 {int(np.mean(l_char_all))} px，共 {len(l_char_all)} 個有效 mask)"
     )
+    print_re_preview(sim_ctx, (l_min, l_max))
 
-    # Re 範圍預覽表
-    print_re_range_preview(
-        rho_in=rho_in,
-        rho_out=rho_out,
-        nu_lb_list=sorted(nu_lb_list, reverse=True),
-        l_char_range=(l_min, l_max),
-        U_phys=U_phys,
-        nu_air=nu_air,
-    )
+    # 批次生成
+    print(f"--- Found {len(mask_files)} masks. Generating configs... ---\n")
+    success, skipped = 0, 0
 
-    # ── 批次生成 ──────────────────────────────────────────────────────────
-    total = len(mask_files)
-    success_count = 0
-    skip_count = 0
-
-    print(f"--- Found {total} masks. Generating configs... ---\n")
-
-    for i, mask_path in enumerate(mask_files):
-        seq_id = i + 1
-        sim_name = f"case_{seq_id:04d}"
-
-        print(f"[{seq_id:04d}/{total}]  {os.path.basename(mask_path)}")
-
-        # ── nu_lb 取樣（Re 多樣性的來源）─────────────────────────────────
-        nu_lb = get_sampled_nu(nu_lb_list)
-
-        # ── 物理可行性檢查 ─────────────────────────────────────────────────
-        ok, reason = check_feasibility(rho_in, rho_out, nu_lb)
-        if not ok:
-            print(f"  [Skip] {reason}\n")
-            skip_count += 1
+    for mask_path in mask_files:
+        fname = os.path.basename(mask_path)
+        meta_entry = mask_meta.get(fname)
+        if meta_entry is None:
+            print(f"  [Skip] {fname} 不在 metadata.json 中\n")
+            skipped += 1
             continue
 
-        # ── 從 PNG 像素計算 L_char ─────────────────────────────────────────
-        try:
-            l_char = calc_l_char_from_png(mask_path, mask_invert, nx_val, ny_val)
-        except Exception as e:
-            print(f"  [Skip] 讀取 mask 失敗：{e}\n")
-            skip_count += 1
-            continue
+        if process_mask(mask_path, meta_entry, sim_ctx):
+            success += 1
+        else:
+            skipped += 1
 
-        # ── 速度與 Re 計算 ──────────────────────────────────────────────────
-        delta_rho = rho_in - rho_out
-        u_bernoulli = math.sqrt((2.0 / 3.0) * delta_rho) if delta_rho > 0 else 0.01
-        u_for_steps = u_bernoulli * U_STEP_FACTOR  # 保守版本，步數偏大
-
-        Re_lb = u_bernoulli * l_char / nu_lb  # = Re_phys（不變性）
-        Ma = u_bernoulli / CS
-
-        # dx for display only（物理解析度，不影響模擬）
-        vel_scale = U_phys / u_bernoulli if u_bernoulli > 1e-9 else 0
-        dx_mm = (
-            (nu_air / (vel_scale * nu_lb)) * 1000 if (vel_scale * nu_lb) > 1e-9 else 0
-        )
-
-        # ── 步數計算（以 L_char / u_for_steps 的 CTU 為單位）──────────────
-        steps_per_ctu = int(l_char / u_for_steps) if u_for_steps > 0 else 10000
-        warmup_steps = w_passes * steps_per_ctu
-        max_steps = t_passes * steps_per_ctu
-        start_record_step = s_passes * steps_per_ctu
-        target_interval = max(1, int(steps_per_ctu / saves_per_ctu))
-
-        print(
-            f"  nu_lb={nu_lb:.4f}  L_char={l_char}px  u={u_bernoulli:.5f}  "
-            f"Ma={Ma:.4f}  Re={Re_lb:.0f}  dx={dx_mm:.4f}mm\n"
-            f"  CTU={steps_per_ctu:,}  warmup={warmup_steps:,}  "
-            f"max={max_steps:,}  start_rec={start_record_step:,}  interval={target_interval}"
-        )
-
-        # ── 組裝並寫出 YAML ────────────────────────────────────────────────
-        run_params = {
-            "sim_name": sim_name,
-            "nu_lb": nu_lb,
-            "l_char": l_char,
-            "rho_in": rho_in,
-            "rho_out": rho_out,
-            "interval": target_interval,
-            "mask_path": mask_path,
-            "data_save_root": data_save_root,
-            "project_name": project_name,
-            "warmup_steps": warmup_steps,
-            "max_steps": max_steps,
-            "start_record_step": start_record_step,
-        }
-
-        final_config = generate_case_config(
-            base_template, run_params, physical_constants
-        )
-
-        nu_str = f"{nu_lb:.4f}".replace(".", "-")
-        config_filename = f"{sim_name}_Nu{nu_str}.yaml"
-        full_config_path = os.path.join(output_dir, config_filename)
-
-        with open(full_config_path, "w", encoding="utf-8") as f:
-            yaml.dump(final_config, f, sort_keys=False, default_flow_style=None)
-
-        print(f"  -> Saved: {config_filename}  (Re≈{Re_lb:.0f})\n")
-        success_count += 1
-
-    # ── 完成統計 ──────────────────────────────────────────────────────────
-    print("=" * 60)
-    print(f"[Done] Generated {success_count} configs, skipped {skip_count}.")
-    if success_count > 0:
-        # 印出最終 Re 分佈統計
-        print(f"\n[Re 分佈統計]")
-        print(f"  rho_in={rho_in}  →  u_lb={math.sqrt(2/3*(rho_in-rho_out)):.5f}")
-        print(f"  nu_lb 選項：{sorted(nu_lb_list)}")
-        u_ref = math.sqrt(2 / 3 * (rho_in - rho_out))
-        print(
-            f"\n  {'nu_lb':>8}  {'Re @ L_min={:d}px'.format(l_min):>18}  {'Re @ L_max={:d}px'.format(l_max):>18}"
-        )
-        print("  " + "-" * 48)
-        for nu_v in sorted(nu_lb_list):
-            re_min = u_ref * l_min / nu_v
-            re_max = u_ref * l_max / nu_v
-            print(f"  {nu_v:>8.4f}  {re_min:>18.0f}  {re_max:>18.0f}")
-    print("=" * 60)
+    print_summary(sim_ctx, success, skipped, l_min, l_max)
 
 
 if __name__ == "__main__":
     main()
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\__init__.py
+"""
+config_utils/__init__.py
+
+公開 API。各子模組用途：
+
+  context.py          → build_sim_context, build_mask_context
+  constants.py        → 物理常數與閾值
+  mask_io.py          → load_solid_mask
+  geometry.py         → fill_geometry, calc_l_char, calc_max_blockage
+  feasibility.py      → check_feasibility
+  blockage_adjuster.py→ fill_blockage_adj
+  nu_sampler.py       → fill_nu_sample
+  steps_calc.py       → fill_physics_and_steps
+  config_assembler.py → build_config
+  preview.py          → print_re_preview, print_summary
+"""
+
+from .constants import CS2, CS, MA_LIMIT, TAU_MIN, U_STEP_FACTOR, U_GAP_MAX, MIN_OPEN, RE_MAX
+from .mask_io import load_solid_mask
+from .geometry import fill_geometry, calc_l_char, calc_max_blockage
+from .feasibility import check_feasibility
+from .blockage_adjuster import fill_blockage_adj
+from .nu_sampler import fill_nu_sample
+from .steps_calc import fill_physics_and_steps
+from .config_assembler import build_config
+from .preview import print_re_preview, print_summary
+from .context import build_sim_context, build_mask_context
+
+__all__ = [
+    "CS2", "CS", "MA_LIMIT", "TAU_MIN", "U_STEP_FACTOR", "U_GAP_MAX", "MIN_OPEN", "RE_MAX",
+    "load_solid_mask",
+    "fill_geometry", "calc_l_char", "calc_max_blockage",
+    "check_feasibility",
+    "fill_blockage_adj",
+    "fill_nu_sample",
+    "fill_physics_and_steps",
+    "build_config",
+    "print_re_preview", "print_summary",
+    "build_sim_context", "build_mask_context",
+]
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\blockage_adjuster.py
+"""
+config_utils/blockage_adjuster.py
+
+依據阻塞率動態調整 rho_in，結果寫入 case_result dict。
+
+【物理推導】
+  u_gap = u_inlet / (1 - blockage)
+  需要：u_gap < U_GAP_MAX
+  → delta_rho_safe = (3/2) × (U_GAP_MAX × open_fraction)²
+  → rho_in_case = min(rho_in, rho_out + delta_rho_safe)
+"""
+
+from .constants import U_GAP_MAX, MIN_OPEN
+
+
+def fill_blockage_adj(case_result: dict, mask_ctx: dict, sim_ctx: dict) -> None:
+    """
+    計算調整後的 rho_in，結果寫入 case_result。
+
+    Writes:
+        case_result["rho_in_case"]   float
+        case_result["u_inlet_safe"]  float
+        case_result["open_fraction"] float
+    """
+    open_fraction = max(MIN_OPEN, 1.0 - mask_ctx["max_blockage"])
+    u_inlet_safe = U_GAP_MAX * open_fraction
+    delta_rho_safe = (3.0 / 2.0) * u_inlet_safe ** 2
+    case_result["rho_in_case"] = min(sim_ctx["rho_in"], sim_ctx["rho_out"] + delta_rho_safe)
+    case_result["u_inlet_safe"] = u_inlet_safe
+    case_result["open_fraction"] = open_fraction
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\config_assembler.py
+"""
+config_utils/config_assembler.py
+
+從 sim_ctx、mask_ctx、case_result 組裝完整的 YAML config dict，
+並決定輸出檔名。
+
+職責：
+  - deep copy base_template
+  - 填入 case 專屬參數
+  - 回傳 (config_dict, output_path) tuple
+  - 呼叫端負責寫入磁碟
+"""
+
+import copy
+import os
+
+
+def build_config(case_result: dict, mask_ctx: dict, sim_ctx: dict) -> tuple[dict, str]:
+    """
+    組裝單一 case 的 YAML config dict 並決定輸出路徑。
+
+    Args:
+        case_result : 須含 rho_in_case, nu_lb, l_char（由前序步驟寫入）
+                      以及步數欄位（由 fill_physics_and_steps 寫入）
+        mask_ctx    : 須含 mask_stem, mask_path
+        sim_ctx     : 須含 base_template, physical_constants, rho_out,
+                      project_name, data_save_root, output_dir, c_smag
+
+    Returns:
+        (config_dict, full_output_path)
+    """
+    config = copy.deepcopy(sim_ctx["base_template"])
+    config["physical_constants"] = sim_ctx["physical_constants"]
+
+    nu_lb      = case_result["nu_lb"]
+    rho_in     = case_result["rho_in_case"]
+    mask_stem  = mask_ctx["mask_stem"]
+
+    # sim_name = mask 前兩段（e.g. "mask_01"）
+    sim_name = "_".join(mask_stem.split("_")[:2])
+
+    # simulation
+    sim = config["simulation"]
+    sim["name"]                  = sim_name
+    sim["nu"]                    = float(f"{nu_lb:.6f}")
+    sim["characteristic_length"] = float(mask_ctx["l_char"])
+    sim["rho_in"]                = float(rho_in)
+    sim["rho_out"]               = float(sim_ctx["rho_out"])
+    sim["compute_step_size"]     = case_result["interval"]
+    sim["warmup_steps"]          = case_result["warmup_steps"]
+    sim["max_steps"]             = case_result["max_steps"]
+    sim["smagorinsky_constant"]  = sim_ctx["c_smag"]
+
+    # nx / ny 從 mask_ctx 填入（來源：metadata.json）
+    sim["nx"] = mask_ctx["nx"]
+    sim["ny"] = mask_ctx["ny"]
+
+    # outputs
+    out = config["outputs"]
+    out["project_name"]              = sim_ctx["project_name"]
+    out["data_save_root"]            = sim_ctx["data_save_root"]
+    out["target_rho_in"]             = float(rho_in)
+    out["start_record_step"]         = case_result["start_record_step"]
+    out["gui"]["interval_steps"]     = case_result["interval"]
+    out["video"]["interval_steps"]   = case_result["interval"]
+    out["video"]["filename"]         = f"{sim_name}.mp4"
+    out["dataset"]["interval_steps"] = case_result["interval"]
+    out["dataset"].pop("folder", None)
+
+    # domain_zones — 從 mask_ctx 的 pad_* 填入
+    buffer = sim_ctx.get("blockage_buffer", 128)
+    dz = config.get("domain_zones", {})
+    dz["sponge_top"] = mask_ctx["pad_top"] - buffer
+    dz["sponge_bot"] = mask_ctx["pad_bot"] - buffer
+    dz["sponge_in"]  = mask_ctx["pad_left"] - buffer
+    dz["sponge_out"] = mask_ctx["pad_right"] - buffer
+    dz["buffer"]     = buffer
+    config["domain_zones"] = dz
+
+    # boundary_condition：Zou-He 壓力邊界 dummy velocity
+    config["boundary_condition"]["value"] = [[0.05, 0.0]] + [[0.0, 0.0]] * 3
+
+    # mask 路徑
+    config["mask"]["path"] = mask_ctx["mask_path"]
+
+    # 輸出路徑
+    nu_str = f"{nu_lb:.4f}".replace(".", "-")
+    config_filename = f"{mask_stem}_cfg_Nu{nu_str}.yaml"
+    full_path = os.path.join(sim_ctx["output_dir"], config_filename)
+
+    # 寫回 case_result 供日誌使用
+    case_result["config_filename"] = config_filename
+    case_result["sim_name"] = sim_name
+
+    return config, full_path
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\constants.py
+"""
+config_utils/constants.py
+
+LBM 模擬的物理常數與穩定性閾值。
+
+所有模組應從此處 import 常數，禁止在其他模組重複定義。
+"""
+
+import math
+
+# ── 格子玻爾茲曼聲速 ──────────────────────────────────────────────────────
+CS2 = 1.0 / 3.0
+CS = math.sqrt(CS2)  # ≈ 0.5774 lu/step (lattice sound speed)
+
+# ── 入口馬赫數上限 ────────────────────────────────────────────────────────
+MA_LIMIT = 0.17  # 入口均值 Ma 上限（對應 u ≈ 0.098 lu/step）
+
+# ── LBM 鬆弛時間下限 ──────────────────────────────────────────────────────
+TAU_MIN = 0.52  # tau 下限（對應 nu_lb_min ≈ 0.0067）
+
+# ── 步數估算保守係數 ──────────────────────────────────────────────────────
+U_STEP_FACTOR = 0.6  # Bernoulli 高估修正：保守速度 = u_bernoulli × 0.6
+
+# ── 阻塞率感知參數 ────────────────────────────────────────────────────────
+U_GAP_MAX = 0.15  # 建築間隙最大安全速度（留 40% 餘量到 0.25 崩潰閾值）
+MIN_OPEN = 0.20   # 最小開放比（防極端阻塞時分母趨近 0）
+
+# ── Reynolds 數上限 ───────────────────────────────────────────────────────
+RE_MAX = 1200  # Re 上限：超過此值在 2D LBM 都市場景數值不穩定
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\context.py
+"""
+config_utils/context.py
+
+定義在函式間流動的 dict 結構（取代長引數串）。
+
+設計原則：
+  - 所有 dict 都是普通 Python dict，不使用 TypedDict 強制型別
+  - 每個 context 的 key 集合在本檔案的 docstring 中明確列出
+  - 函式只需 import 用到的 key，不需要整包傳遞
+
+【SimContext】  全域模擬設定，從 master_config 解析一次，整個批次共享
+  keys:
+    rho_in          float  基準入口密度（高阻塞時各 case 自動降低）
+    rho_out         float  出口密度
+    nu_lb_list      list   nu 候選清單
+    warmup_passes   float  暖機 CTU 倍數
+    total_passes    float  總模擬 CTU 倍數
+    start_record_passes float  開始錄製 CTU 倍數
+    saves_per_ctu   float  每 CTU 儲存幀數
+    c_smag          float  Smagorinsky 常數
+    U_phys          float  物理入口風速（m/s，取清單第一個）
+    nu_air          float  空氣動黏度（m²/s）
+    blockage_buffer int    阻塞率計算時的右側緩衝（px）
+    mask_invert     bool   PNG 固體判斷是否反轉
+    project_name    str
+    data_save_root  str    輸出資料根目錄
+    output_dir      str    YAML 輸出目錄
+    base_template   dict   master_config 的 template 區塊
+    physical_constants dict master_config 的 physical_constants 區塊
+
+【MaskContext】  單一 mask 的幾何資訊，從 metadata.json + mask PNG 計算
+  keys:
+    mask_path   str    PNG 檔案完整路徑
+    mask_stem   str    檔名不含副檔名（e.g. "mask_01"）
+    nx          int    domain X 格點數（來自 metadata）
+    ny          int    domain Y 格點數（來自 metadata）
+    pad_right   int    右側 sponge padding（px）
+    pad_top     int    上方 padding（px）
+    pad_bot     int    下方 padding（px）
+    pad_left    int    左方 padding（px）
+    l_char      int    最大單一建築特徵長度（px）
+    max_blockage float 最嚴重截面阻塞率（0~1）
+
+【CaseResult】  單一 case 的計算結果，在 process_mask 內部各步驟間流動
+  keys:
+    rho_in_case    float  調整後的入口密度
+    u_inlet_safe   float  對應的安全入口速度
+    open_fraction  float  有效開放比
+    nu_lb          float  最終選用的 nu 值
+    nu_re_pairs    list   [(nu, Re), ...] 可行清單
+    u_bernoulli    float  Bernoulli 速度估算
+    Ma             float  馬赫數
+    Re             float  Reynolds 數
+    tau            float  鬆弛時間
+    dx_mm          float  物理格點間距（mm，僅供顯示）
+    steps_per_ctu  int
+    warmup_steps   int
+    max_steps      int
+    start_record_step int
+    interval       int
+    config_filename str   輸出 YAML 檔名
+    sim_name        str   模擬識別名稱
+"""
+
+
+def build_sim_context(master_cfg: dict) -> dict:
+    """
+    從 master_config dict 建構 SimContext。
+
+    同時處理 nu_lb_list fallback 與 U_phys list 取第一個值的邊界情況。
+    """
+    settings = master_cfg["settings"]
+    physics = master_cfg["physics_control"]
+    phys_const = master_cfg["physical_constants"]
+    base_template = master_cfg["template"]
+
+    project_name = settings["project_name"]
+    project_dir = f"SimCases/{project_name}"
+
+    nu_lb_list = physics.get("nu_lb_list")
+    if not nu_lb_list:
+        nu_single = physics["nu"]
+        nu_lb_list = [nu_single]
+        print(f"[Info] 未找到 nu_lb_list，使用單一 nu={nu_single}。")
+
+    U_phys_raw = phys_const["inlet_velocity_ms"]
+    U_phys = U_phys_raw[0] if isinstance(U_phys_raw, list) else U_phys_raw
+
+    return {
+        # 壓力邊界
+        "rho_in": physics["rho_in"],
+        "rho_out": physics["rho_out"],
+        # nu 候選
+        "nu_lb_list": nu_lb_list,
+        # 步數倍率
+        "warmup_passes": physics["warmup_passes"],
+        "total_passes": physics["total_passes"],
+        "start_record_passes": physics["start_record_passes"],
+        "saves_per_ctu": physics["saves_per_physical_second"],
+        # 模型參數
+        "c_smag": physics["smagorinsky_constant"],
+        # 物理換算
+        "U_phys": U_phys,
+        "nu_air": phys_const.get("kinematic_viscosity_air_m2_s", 1.5e-5),
+        # 幾何設定
+        "blockage_buffer": settings.get("blockage_buffer", 128),
+        "mask_invert": base_template.get("mask", {}).get("invert", False),
+        # 路徑
+        "project_name": project_name,
+        "data_save_root": f"outputs/{project_name}",
+        "output_dir": f"{project_dir}/configs",
+        "mask_dir": f"{project_dir}/masks",
+        "mask_meta_dir": f"{project_dir}",
+        # 模板資料（組裝 YAML 用）
+        "base_template": base_template,
+        "physical_constants": master_cfg["physical_constants"],
+    }
+
+
+def build_mask_context(mask_path: str, meta_entry: dict) -> dict:
+    """
+    從 mask 路徑與 metadata.json 的單筆 entry 建構 MaskContext。
+
+    Args:
+        mask_path  : PNG 完整路徑
+        meta_entry : metadata.json 中對應這個 mask 的 dict
+                     必須包含 domain_W_total, domain_H_total, pad_right,
+                     pad_top, pad_bot, pad_left
+    """
+    import os
+
+    mask_stem = os.path.splitext(os.path.basename(mask_path))[0]
+    return {
+        "mask_path": mask_path,
+        "mask_stem": mask_stem,
+        "nx": int(meta_entry["domain_W_total"]),
+        "ny": int(meta_entry["domain_H_total"]),
+        "pad_right": int(meta_entry["pad_right"]),
+        "pad_top": int(meta_entry["pad_top"]),
+        "pad_bot": int(meta_entry["pad_bot"]),
+        "pad_left": int(meta_entry["pad_left"]),
+        # l_char / max_blockage 由 geometry 計算後填入
+        "l_char": None,
+        "max_blockage": None,
+    }
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\feasibility.py
+"""
+config_utils/feasibility.py
+
+LBM 模擬參數的物理可行性檢查。
+
+三重保護（按嚴重程度排序）：
+  1. Ma 上限：確保低馬赫假設成立
+  2. tau 下限：確保 LBM 鬆弛格式數值穩定
+  3. Re 上限：確保 2D 都市場景不崩潰
+
+設計原則：
+  - 純函式，無副作用
+  - 回傳 (ok, reason) tuple，由呼叫端決定如何處理
+  - 不直接呼叫 sys.exit 或 print
+"""
+
+import math
+from .constants import CS, MA_LIMIT, TAU_MIN, RE_MAX
+
+
+def check_feasibility(
+    rho_in: float,
+    rho_out: float,
+    nu_lb: float,
+    l_char: int,
+) -> tuple[bool, str]:
+    """
+    檢查一組 (rho_in, rho_out, nu_lb, l_char) 是否物理可行。
+
+    Args:
+        rho_in  : 入口密度（格子單位）
+        rho_out : 出口密度（格子單位）
+        nu_lb   : 格子運動黏度
+        l_char  : 特徵長度（像素）
+
+    Returns:
+        (True, "")          → 可行
+        (False, reason_str) → 不可行，reason_str 說明原因與建議
+    """
+    delta_rho = rho_in - rho_out
+    u_bernoulli = math.sqrt((2.0 / 3.0) * delta_rho) if delta_rho > 0 else 0.0
+    Ma = u_bernoulli / CS
+    tau = 3.0 * nu_lb + 0.5
+    Re = u_bernoulli * l_char / nu_lb if nu_lb > 0 else float("inf")
+
+    if Ma > MA_LIMIT:
+        from .constants import CS2
+        max_safe_drho = 1.5 * CS2 * MA_LIMIT ** 2
+        return False, (
+            f"Ma={Ma:.4f} > {MA_LIMIT}  "
+            f"(u={u_bernoulli:.5f} lu/step, Δρ={delta_rho:.5f})。"
+            f"建議 rho_in ≤ {rho_out + max_safe_drho:.5f}"
+        )
+
+    if tau < TAU_MIN:
+        return False, (
+            f"tau={tau:.4f} < {TAU_MIN}  (nu_lb={nu_lb:.5f})。"
+            f"請將 nu_lb ≥ {(TAU_MIN - 0.5) / 3.0:.5f}"
+        )
+
+    if Re > RE_MAX:
+        return False, (
+            f"Re={Re:.0f} > RE_MAX={RE_MAX}  "
+            f"(nu={nu_lb:.4f}, L_char={l_char}px, u={u_bernoulli:.5f})。"
+            f"此組合在 2D LBM 都市場景數值不穩定，"
+            f"請增大 nu_lb 或等待更小 L_char 的 mask"
+        )
+
+    return True, ""
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\geometry.py
+"""
+config_utils/geometry.py
+
+從 MaskContext 計算幾何特性，結果寫回同一個 dict：
+  - l_char      : 最大單一建築的等效特徵尺寸（px）
+  - max_blockage: 最嚴重 X 截面的阻塞率
+
+公開函式：
+  fill_geometry(mask_ctx, sim_ctx) -> None
+    直接修改 mask_ctx["l_char"] 與 mask_ctx["max_blockage"]
+
+  calc_l_char / calc_max_blockage
+    保留為獨立函式供 pre-scan 使用（pre-scan 只需 l_char，不建整包 MaskContext）
+"""
+
+import numpy as np
+from scipy import ndimage
+from scipy.ndimage import binary_erosion
+
+from .mask_io import load_solid_mask
+
+_EROSION_ITER = 3
+_AREA_FRAC_MAX = 0.05
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# region 公開入口：填充 mask_ctx
+# ─────────────────────────────────────────────────────────────────────────────
+
+def fill_geometry(mask_ctx: dict, sim_ctx: dict) -> None:
+    """
+    計算 L_char 與 max_blockage，結果寫入 mask_ctx。
+
+    Args:
+        mask_ctx : MaskContext，須含 mask_path, nx, ny, pad_right
+        sim_ctx  : SimContext，須含 mask_invert, blockage_buffer
+
+    Raises:
+        ValueError / OSError: 無法讀取 PNG 時向上拋出
+    """
+    mask_ctx["l_char"] = calc_l_char(
+        png_path=mask_ctx["mask_path"],
+        invert=sim_ctx["mask_invert"],
+        nx=mask_ctx["nx"],
+        ny=mask_ctx["ny"],
+    )
+    mask_ctx["max_blockage"] = calc_max_blockage(
+        png_path=mask_ctx["mask_path"],
+        invert=sim_ctx["mask_invert"],
+        nx=mask_ctx["nx"],
+        ny=mask_ctx["ny"],
+        pad_right=mask_ctx["pad_right"],
+        buffer=sim_ctx["blockage_buffer"],
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# region 低階計算（供 pre-scan 直接呼叫）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def calc_l_char(png_path: str, invert: bool, nx: int, ny: int) -> int:
+    """
+    計算最大單一建築的等效特徵尺寸 L_char（像素）。
+
+    演算法（v4）：
+      1. morphological erosion（3px）分離黏連建築
+      2. 連通域分析
+      3. 面積過濾：排除 > domain * 5% 的大連通域
+      4. 每個合格連通域取 min(X-span, Y-span)
+      5. 取最大值
+    """
+    solid = load_solid_mask(png_path, invert, nx, ny)
+    solid_eroded = binary_erosion(solid, iterations=_EROSION_ITER)
+    labeled, n_features = ndimage.label(solid_eroded)
+
+    if n_features == 0:
+        labeled, n_features = ndimage.label(solid)
+        if n_features == 0:
+            return max(1, ny // 8)
+
+    area_max = int(nx * ny * _AREA_FRAC_MAX)
+    max_l = 0
+
+    for label_id in range(1, n_features + 1):
+        region = labeled == label_id
+        if int(np.sum(region)) > area_max:
+            continue
+
+        x_idx = np.where(np.any(region, axis=1))[0]
+        y_idx = np.where(np.any(region, axis=0))[0]
+        if len(x_idx) == 0 or len(y_idx) == 0:
+            continue
+
+        x0 = max(0, x_idx[0] - _EROSION_ITER)
+        x1 = min(nx - 1, x_idx[-1] + _EROSION_ITER)
+        y0 = max(0, y_idx[0] - _EROSION_ITER)
+        y1 = min(ny - 1, y_idx[-1] + _EROSION_ITER)
+        roi = solid[x0:x1 + 1, y0:y1 + 1]
+
+        x_real = np.where(np.any(roi, axis=1))[0]
+        y_real = np.where(np.any(roi, axis=0))[0]
+        if len(x_real) == 0 or len(y_real) == 0:
+            continue
+
+        max_l = max(max_l, min(
+            int(x_real[-1] - x_real[0] + 1),
+            int(y_real[-1] - y_real[0] + 1),
+        ))
+
+    if max_l == 0:
+        min_area, fallback_l = nx * ny, 1
+        for label_id in range(1, n_features + 1):
+            region = labeled == label_id
+            area = int(np.sum(region))
+            if area < min_area:
+                x_idx = np.where(np.any(region, axis=1))[0]
+                y_idx = np.where(np.any(region, axis=0))[0]
+                if len(x_idx) > 0 and len(y_idx) > 0:
+                    min_area = area
+                    fallback_l = min(
+                        int(x_idx[-1] - x_idx[0] + 1),
+                        int(y_idx[-1] - y_idx[0] + 1),
+                    )
+        max_l = fallback_l
+
+    return max(1, max_l)
+
+
+def calc_max_blockage(
+    png_path: str,
+    invert: bool,
+    nx: int,
+    ny: int,
+    pad_right: int = 512,
+    buffer: int = 128,
+) -> float:
+    """
+    計算最嚴重 X 截面的阻塞率（5px 滾動平均後取最大值）。
+
+    排除範圍：
+      左側：前 5%（inlet BC 節點）
+      右側：nx - pad_right - buffer（sponge + ROI buffer）
+    """
+    solid = load_solid_mask(png_path, invert, nx, ny)
+    x_start = max(1, int(nx * 0.05))
+    x_end = min(nx - 1, nx - pad_right - buffer)
+    roi = solid[x_start:x_end, :]
+
+    if roi.shape[0] == 0:
+        return 0.0
+
+    blockage_per_x = np.mean(roi.astype(np.float32), axis=1)
+    window = 5
+    if len(blockage_per_x) >= window:
+        kernel = np.ones(window, dtype=np.float32) / window
+        smoothed = np.convolve(blockage_per_x, kernel, mode="valid")
+    else:
+        smoothed = blockage_per_x
+
+    return float(np.max(smoothed))
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\mask_io.py
+"""
+config_utils/mask_io.py
+
+Mask PNG 讀取的統一入口。
+
+確保與 solver mask_utils 讀取邏輯完全一致：
+  灰階讀取 → cv2.resize(width=nx, height=ny) → threshold 127
+  → invert 旗標 → .T 轉置為 [nx, ny]
+
+注意事項：
+  - cv2.resize 參數順序是 (width, height) = (nx, ny)
+  - 讀入後 img.shape = (ny, nx)，.T 後 = (nx, ny)，與 Taichi field 慣例一致
+  - 此模組僅負責 I/O，不做任何幾何計算
+"""
+
+import cv2
+import numpy as np
+
+
+def load_solid_mask(png_path: str, invert: bool, nx: int, ny: int) -> np.ndarray:
+    """
+    讀取建物遮罩 PNG，返回 solid[nx, ny] (bool，True=固體)。
+
+    Args:
+        png_path : PNG 檔案路徑
+        invert   : True 時以亮色為固體（黑底白建築），False 時以暗色為固體
+        nx       : domain X 方向格點數（水平）
+        ny       : domain Y 方向格點數（垂直）
+
+    Returns:
+        shape=(nx, ny) 的 bool 陣列，True 代表固體格點
+
+    Raises:
+        ValueError: 無法讀取圖片時
+    """
+    img = cv2.imread(png_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise ValueError(f"無法讀取圖片：{png_path}")
+
+    # cv2.resize(src, (width, height)) → img.shape = (ny, nx)
+    if img.shape != (ny, nx):
+        img = cv2.resize(img, (nx, ny), interpolation=cv2.INTER_NEAREST)
+
+    solid_yx = (img > 127) if invert else (img < 127)  # shape: (ny, nx)
+    return solid_yx.T  # → (nx, ny)，與 Taichi field 慣例一致
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\nu_sampler.py
+"""
+config_utils/nu_sampler.py
+
+可行 nu 過濾與加權隨機取樣，結果寫入 case_result dict。
+
+【取樣策略】
+  1. 過濾：對所有 nu 候選做三重可行性檢查（Ma + tau + Re）
+  2. 加權：weight = 1/Re，補償低 Re 選項天生較多的偏差
+  3. 取樣：加權隨機取樣一個 nu
+"""
+
+import math
+import random
+
+from .feasibility import check_feasibility
+
+
+def fill_nu_sample(case_result: dict, mask_ctx: dict, sim_ctx: dict) -> bool:
+    """
+    過濾可行 nu 並加權取樣，結果寫入 case_result。
+
+    Args:
+        case_result : 須含 rho_in_case（由 fill_blockage_adj 寫入）
+        mask_ctx    : 須含 l_char
+        sim_ctx     : 須含 nu_lb_list, rho_out
+
+    Writes:
+        case_result["nu_lb"]       float  選出的 nu 值
+        case_result["nu_re_pairs"] list   [(nu, Re), ...] 可行清單
+
+    Returns:
+        True  → 取樣成功
+        False → 無可行 nu，case_result 不寫入
+    """
+    rho_in_case = case_result["rho_in_case"]
+    rho_out     = sim_ctx["rho_out"]
+    l_char      = mask_ctx["l_char"]
+
+    feasible = [
+        nu for nu in sorted(sim_ctx["nu_lb_list"])
+        if check_feasibility(rho_in_case, rho_out, nu, l_char)[0]
+    ]
+
+    if not feasible:
+        _, reason = check_feasibility(rho_in_case, rho_out, max(sim_ctx["nu_lb_list"]), l_char)
+        print(f"  [Skip] 無可用 nu（所有選項均不可行）。最大 nu 原因：{reason}\n")
+        return False
+
+    delta_rho = rho_in_case - rho_out
+    u = math.sqrt(2.0 / 3.0 * delta_rho) if delta_rho > 1e-9 else 0.01
+    re_values = [u * l_char / nu for nu in feasible]
+
+    # 1/Re 加權取樣
+    weights = [1.0 / re for re in re_values]
+    total_w = sum(weights)
+    probs = [w / total_w for w in weights]
+
+    r = random.random()
+    cumulative = 0.0
+    chosen = feasible[-1]
+    for nu, prob in zip(feasible, probs):
+        cumulative += prob
+        if r <= cumulative:
+            chosen = nu
+            break
+
+    case_result["nu_lb"] = chosen
+    case_result["nu_re_pairs"] = list(zip(feasible, re_values))
+    return True
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\preview.py
+"""
+config_utils/preview.py
+
+Re 範圍預覽表列印（執行前）與完成統計（執行後）。
+
+所有函式接受 sim_ctx dict，不需要展開引數。
+"""
+
+import math
+from .constants import CS, MA_LIMIT, RE_MAX, U_GAP_MAX, TAU_MIN
+
+
+def print_re_preview(sim_ctx: dict, l_char_range: tuple) -> None:
+    """
+    列印 nu_lb × L_char 的 Re 預覽表。
+
+    Args:
+        sim_ctx      : SimContext，須含 rho_in, rho_out, nu_lb_list, U_phys, nu_air
+        l_char_range : (l_min, l_max)
+    """
+    rho_in  = sim_ctx["rho_in"]
+    rho_out = sim_ctx["rho_out"]
+    nu_list = sorted(sim_ctx["nu_lb_list"], reverse=True)
+    U_phys  = sim_ctx["U_phys"]
+    nu_air  = sim_ctx["nu_air"]
+
+    delta_rho = rho_in - rho_out
+    u_lb = math.sqrt(2 / 3 * delta_rho) if delta_rho > 0 else 0.01
+    Ma   = u_lb / CS
+    l_min, l_max = l_char_range
+    l_samples = _sample_l(l_min, l_max)
+
+    sep = "=" * 90
+    print(sep)
+    print("  Re 可達範圍預覽  (❌ 超過 RE_MAX 的組合會被自動 skip)")
+    print(sep)
+    print(
+        f"  固定 rho_in={rho_in} → u_lb={u_lb:.5f}  Ma={Ma:.4f}  "
+        f"{'✅ 安全' if Ma <= MA_LIMIT else '❌ 危險'}"
+    )
+    print(f"  RE_MAX={RE_MAX}  U_GAP_MAX={U_GAP_MAX}  TAU_MIN={TAU_MIN}")
+    print(f"  物理常數：U_phys={U_phys} m/s,  nu_air={nu_air:.2e} m²/s")
+    print(f"  mask L_char 預估範圍：{l_min} ~ {l_max} px\n")
+
+    _print_table(nu_list, l_samples, u_lb, show_dx=False, U_phys=U_phys, nu_air=nu_air)
+    _print_table(nu_list, l_samples, u_lb, show_dx=True,  U_phys=U_phys, nu_air=nu_air)
+
+    print("  ⚠️  重要提示：")
+    print("     - rho_in 不影響 Re！改 rho_in 只改 dx（物理解析度），Re 不變。")
+    print("     - Re 多樣性的唯一正確旋鈕：nu_lb_list。")
+    print(f"     - Re > {RE_MAX} 的組合在 2D 都市場景會崩潰，已自動 skip。")
+    print(f"     - 阻塞率高時 rho_in 會自動降低（間隙速度 < {U_GAP_MAX}）。")
+    print(sep + "\n")
+
+
+def print_summary(sim_ctx: dict, success: int, skipped: int, l_min: int, l_max: int) -> None:
+    """
+    列印批次完成後的 Re 分佈統計。
+
+    Args:
+        sim_ctx  : SimContext，須含 rho_in, rho_out, nu_lb_list
+        success  : 成功生成數
+        skipped  : skip 數
+        l_min/max: pre-scan 得到的 L_char 範圍
+    """
+    print("=" * 60)
+    print(f"[Done] Generated {success} configs, skipped {skipped}.")
+    if success == 0:
+        print("=" * 60)
+        return
+
+    rho_in  = sim_ctx["rho_in"]
+    rho_out = sim_ctx["rho_out"]
+    nu_list = sim_ctx["nu_lb_list"]
+    u_ref   = math.sqrt(2 / 3 * (rho_in - rho_out))
+
+    print(f"\n[Re 分佈統計]  (rho_in={rho_in}，u_lb≈{u_ref:.5f})")
+    print(f"  nu_lb 選項：{sorted(nu_list)}")
+    print(
+        f"\n  {'nu_lb':>8}  {'tau':>6}  "
+        f"{'Re @ L_min={:d}px'.format(l_min):>20}  "
+        f"{'Re @ L_max={:d}px'.format(l_max):>20}"
+    )
+    print("  " + "-" * 58)
+    for nu in sorted(nu_list):
+        tau = 3.0 * nu + 0.5
+        re_min = u_ref * l_min / nu
+        re_max = u_ref * l_max / nu
+        print(
+            f"  {nu:>8.4f}  {tau:>6.4f}  "
+            f"{'❌' if re_min > RE_MAX else '  '}{re_min:>18.0f}  "
+            f"{'❌' if re_max > RE_MAX else '  '}{re_max:>18.0f}"
+        )
+    print("=" * 60)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# region 內部輔助
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _sample_l(l_min: int, l_max: int, n: int = 5) -> list:
+    if l_min == l_max:
+        return [l_min]
+    step = max(1, (l_max - l_min) // (n - 1))
+    samples = list(range(l_min, l_max, step))
+    if l_max not in samples:
+        samples.append(l_max)
+    return samples[:n]
+
+
+def _print_table(nu_list, l_samples, u_lb, show_dx, U_phys, nu_air):
+    if show_dx:
+        print("  【物理 Re = 格子 Re（不變性）】  dx = nu_air / (U_phys/u_lb × nu_lb)")
+        header = f"  {'nu_lb':>8}  {'dx (mm)':>9}"
+    else:
+        print("  【格子 Re】  Re_lb = u_lb × L_char / nu_lb   (❌ = 超過 RE_MAX)")
+        header = f"  {'nu_lb':>8}  {'tau':>6}  {'穩定':>4}"
+
+    for l in l_samples:
+        header += f"  L={l:>4}px"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+
+    for nu in nu_list:
+        tau = 3.0 * nu + 0.5
+        re_vals = [u_lb * l / nu for l in l_samples]
+
+        if show_dx:
+            vel_scale = U_phys / u_lb if u_lb > 1e-9 else 0
+            dx = nu_air / (vel_scale * nu) if (vel_scale * nu) > 1e-9 else 0
+            row = f"  {nu:>8.4f}  {dx * 1000:>9.4f}"
+        else:
+            row = f"  {nu:>8.4f}  {tau:>6.4f}  {'✅' if tau >= TAU_MIN else '⚠️ '}"
+
+        for re in re_vals:
+            row += f"  {'❌' if re > RE_MAX else '  '}{re:>6.0f}"
+        print(row)
+    print()
+
+--------------------------------------------------------------------------------------------
+src\tools\config_utils\steps_calc.py
+"""
+config_utils/steps_calc.py
+
+衍生物理量與步數計算，結果寫入 case_result dict。
+
+所有步數以 CTU（Convective Time Unit = L_char / u_conservative）為單位，
+確保不同 mask / 不同 nu 的 case 在物理時間上具有一致性。
+"""
+
+import math
+from .constants import U_STEP_FACTOR, CS
+
+
+def fill_physics_and_steps(case_result: dict, mask_ctx: dict, sim_ctx: dict) -> None:
+    """
+    計算衍生物理量（u, Ma, Re, tau, dx_mm）與步數，結果寫入 case_result。
+
+    Args:
+        case_result : 須含 rho_in_case, nu_lb（由前序步驟寫入）
+        mask_ctx    : 須含 l_char
+        sim_ctx     : 須含 rho_out, warmup_passes, total_passes,
+                      start_record_passes, saves_per_ctu, U_phys, nu_air
+
+    Writes:
+        case_result["u_bernoulli"]      float
+        case_result["Ma"]               float
+        case_result["Re"]               float
+        case_result["tau"]              float
+        case_result["dx_mm"]            float  (僅供顯示)
+        case_result["steps_per_ctu"]    int
+        case_result["warmup_steps"]     int
+        case_result["max_steps"]        int
+        case_result["start_record_step"] int
+        case_result["interval"]         int
+    """
+    rho_in  = case_result["rho_in_case"]
+    rho_out = sim_ctx["rho_out"]
+    nu_lb   = case_result["nu_lb"]
+    l_char  = mask_ctx["l_char"]
+    U_phys  = sim_ctx["U_phys"]
+    nu_air  = sim_ctx["nu_air"]
+
+    delta_rho   = rho_in - rho_out
+    u_bernoulli = math.sqrt((2.0 / 3.0) * delta_rho) if delta_rho > 1e-9 else 0.01
+    Ma          = u_bernoulli / CS
+    tau         = 3.0 * nu_lb + 0.5
+    Re          = u_bernoulli * l_char / nu_lb
+
+    vel_scale = U_phys / u_bernoulli if u_bernoulli > 1e-9 else 0
+    dx_mm = (nu_air / (vel_scale * nu_lb)) * 1000 if (vel_scale * nu_lb) > 1e-9 else 0
+
+    # 步數（以 CTU 倍率計）
+    u_conservative  = u_bernoulli * U_STEP_FACTOR
+    steps_per_ctu   = max(1, int(l_char / u_conservative))
+    saves_per_ctu   = sim_ctx["saves_per_ctu"]
+
+    case_result.update({
+        "u_bernoulli":       u_bernoulli,
+        "Ma":                Ma,
+        "Re":                Re,
+        "tau":               tau,
+        "dx_mm":             dx_mm,
+        "steps_per_ctu":     steps_per_ctu,
+        "warmup_steps":      int(sim_ctx["warmup_passes"]       * steps_per_ctu),
+        "max_steps":         int(sim_ctx["total_passes"]        * steps_per_ctu),
+        "start_record_step": int(sim_ctx["start_record_passes"] * steps_per_ctu),
+        "interval":          max(1, int(steps_per_ctu / saves_per_ctu)),
+    })
 
 --------------------------------------------------------------------------------------------
 src\tools\config_utils.py
@@ -7683,6 +8563,38 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+--------------------------------------------------------------------------------------------
+src\tools\rename_files.py
+from pathlib import Path
+from typing import List
+
+
+def rename_pngs_with_prefix(folder: Path, prefix: str, start_index: int = 1) -> None:
+    """
+    將資料夾內所有 PNG 檔案重新命名為 prefix + num:03d
+
+    Example:
+        img_001.png
+        img_002.png
+        img_003.png
+    """
+
+    png_files: List[Path] = sorted(folder.glob("*.png"))
+
+    for i, file_path in enumerate(png_files, start=start_index):
+        new_name: str = f"{prefix}_{i:02d}.png"
+        new_path: Path = folder / new_name
+
+        print(f"{file_path.name} -> {new_name}")
+        file_path.rename(new_path)
+
+
+if __name__ == "__main__":
+
+    folder_path: Path = Path("SimCases/Urban-1/masks")
+
+    rename_pngs_with_prefix(folder=folder_path, prefix="mask")
 
 --------------------------------------------------------------------------------------------
 src\tools\urban_map_generator.py

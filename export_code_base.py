@@ -136,7 +136,7 @@ def main() -> None:
     Entry point.
     """
     root_dir: Path = Path(
-        "C:/Users/GAI/Desktop/NCA_workspace/01-lbm-2d"
+        "C:/Users/User/Desktop/NCA_workspace/01-lbm-2d"
     )  # current directory
     output_file: Path = Path("01-lbm-2d_code_base.txt")
 
