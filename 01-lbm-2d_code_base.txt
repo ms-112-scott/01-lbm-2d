@@ -58,7 +58,8 @@ code folder structure...
 │  │  ├─ 02_核心求解器修正報告_20260221.md
 │  │  ├─ 03_修改入口為壓力邊界驅動
 │  │  ├─ 04_260311_bug_fix.md
-│  │  └─ 05_260311 stability analysis.md
+│  │  ├─ 05_260311 stability analysis.md
+│  │  └─ 06_模擬輸出與物理轉換.md
 │  └─ gemini/
 │     └─ hdf5_output_structure.md
 ├─ notebooks/
